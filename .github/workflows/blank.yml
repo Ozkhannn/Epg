@@ -43,17 +43,17 @@ jobs:
                           out.append(ch)
               except Exception:
                   pass
-          ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
+          ET.ElementTree(out).write("../filtre.xml", encoding="utf-8", xml_declaration=True)
           print("Taranacak yerli kanal kaydi:", len(out))
           PY
 
           echo "=== GRAB BASLIYOR ==="
           npm run grab -- \
-            --channels=filtre.xml \
+            --channels=../filtre.xml \
             --output=../ham_guide.xml \
             --days=2 \
             --maxConnections=10 \
-            --timeout=20000 2>&1 | grep -Ev "^\s*$" | tail -60 || true
+            --timeout=20000 2>&1 | tail -20 || true
 
           echo "=== GRAB BITTI ==="
           if [ -s ../ham_guide.xml ]; then
@@ -70,7 +70,6 @@ jobs:
           python3 <<'PY'
           import re, xml.etree.ElementTree as ET
 
-          # kanal_anahtar -> (tvg-id, gorunen ad)
           ADLAR = {
               "trt1": ("TRT1.tr", "TRT 1"),
               "trt2": ("TRT2.tr", "TRT 2"),
@@ -199,26 +198,25 @@ jobs:
                   return z
               return z[:14] + " +0300"
 
-          # 1) Beklenen tum kanallari filtre.xml'den al
-          #    -> grab sadece 8 kanal ceksе bile 104 kanal XML'de yer alir
-          id_map = {}       # xmltv_id -> tid
-          kanallar = {}     # tid -> gorunen ad
+          # 1) ADLAR'dan TUM benzersiz kanallari bas (program olsun veya olmasin)
+          kanallar = {}
+          for n, (tid, gad) in ADLAR.items():
+              kanallar[tid] = gad
 
+          # 2) filtre.xml'den xmltv_id -> tid eslesmesi
+          id_map = {}
           filtre_kok = ET.parse("filtre.xml").getroot()
           for ch in filtre_kok.findall("channel"):
               eid = ch.get("xmltv_id")
               if not eid:
                   continue
-              ham = ch.text or ""
-              n = norm(ham)
+              n = norm(ch.text or "")
               if n in ADLAR:
-                  tid, gad = ADLAR[n]
-                  id_map[eid] = tid
-                  kanallar[tid] = gad
+                  id_map[eid] = ADLAR[n][0]
 
-          print("Beklenen kanal (filtre.xml):", len(kanallar))
+          print("Beklenen benzersiz kanal:", len(kanallar), "| id_map kaydi:", len(id_map))
 
-          # 2) Programlari ham_guide.xml'den al ve id_map uzerinden esle
+          # 3) Programlari ham_guide.xml'den al ve id_map uzerinden esle
           kok = ET.parse("ham_guide.xml").getroot()
           proglar = []
           eklenen = set()
@@ -245,7 +243,7 @@ jobs:
               proglar.append(yp)
               programli.add(tid)
 
-          # 3) XML'i yaz — TUM kanallar (program olsun veya olmasin)
+          # 4) XML yaz
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
@@ -254,12 +252,11 @@ jobs:
               tv.append(yp)
           ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
 
-          # Tanilama ciktisi
           programsiz = set(kanallar.keys()) - programli
           print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
                 % (len(kanallar), len(programli), len(programsiz), len(proglar)))
           if programsiz:
-              print("Programsiz ilk 15 kanal:", sorted(programsiz)[:15])
+              print("Programsiz ilk 15:", sorted(programsiz)[:15])
           PY
 
       - name: Gist Guncelle
