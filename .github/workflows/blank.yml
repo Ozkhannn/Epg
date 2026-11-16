@@ -9,93 +9,72 @@ jobs:
   epg-uret:
     runs-on: ubuntu-latest
     steps:
-      - name: Python Kur
-        uses: actions/setup-python@v5
+      - name: Node.js ve Python Kur
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
 
-      - name: EPG Kaynaklarini Indir
+      - name: Turkiye EPG Kaziyiciyi Hazirla
         run: |
-          mkdir -p epg_data
-          curl -sL --max-time 60 -A "Mozilla/5.0" "http://epgshare01.online" -o epg_data/tr1.xml.gz || true
-          curl -sL --max-time 60 -A "Mozilla/5.0" "https://open-epg.com" -o epg_data/tr2.xml.gz || true
-          curl -sL --max-time 60 -A "Mozilla/5.0" "https://githubusercontent.com" -o epg_data/tr3.xml || true
-          ls -lh epg_data/
+          git clone --depth 1 https://github.com epg_tool
+          cd epg_tool
+          npm install
 
-      - name: Sade EPG Olustur ve Gist Guncelle
-        env:
-          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ secrets.GIST_ID }}
+      - name: Turkiye Kanallarini Cek
+        run: |
+          cd epg_tool
+          cat sites/digiturk.com.tr/digiturk.com.tr.channels.xml sites/dsmart.com.tr/dsmart.com.tr.channels.xml | grep -E "<channel|<channels|</channels|<\?xml" > tr_all.xml
+          echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temiz_kanallar.xml
+          grep "<channel " tr_all.xml >> temiz_kanallar.xml || true
+          echo '</channels>' >> temiz_kanallar.xml
+          npm run grab -- --channels=temiz_kanallar.xml --output=../ham_guide.xml --days=2
+
+      - name: Kanal Isimlerini Sadelestir
         run: |
           python3 - << 'EOF'
-          import os, glob, json, gzip, re, urllib.request, xml.etree.ElementTree as ET
+          import re, xml.etree.ElementTree as ET
 
           def ismi_sadelestir(isim):
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr)\b", "", isim, flags=re.IGNORECASE)
               temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
               return " ".join(temiz.split()).strip()
 
+          kaynak_root = ET.parse("ham_guide.xml").getroot()
           ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           eklenen_kanallar = {}
           id_haritasi = {}
 
-          for dosya in glob.glob("epg_data/*"):
-              try:
-                  if os.path.getsize(dosya) < 1000:
-                      print("Cok kucuk dosya atlandi:", dosya)
-                      continue
-                  with open(dosya, "rb") as f:
-                      ham = f.read()
-                  veri = gzip.decompress(ham) if dosya.endswith(".gz") else ham
-                  
-                  if not veri.lstrip().startswith(b"<"):
-                      print("XML degil, atlandi:", dosya)
-                      continue
+          for ch in kaynak_root.findall("channel"):
+              eski_id = ch.get("id")
+              disp = ch.find("display-name")
+              ham_isim = disp.text if (disp is not None and disp.text) else eski_id
+              if not ham_isim:
+                  continue
+              sade_ad = ismi_sadelestir(ham_isim)
+              if not sade_ad:
+                  continue
+              id_haritasi[eski_id] = sade_ad
+              if sade_ad not in eklenen_kanallar:
+                  yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
+                  yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
+                  yeni_disp.text = sade_ad
+                  eklenen_kanallar[sade_ad] = True
 
-                  kaynak_root = ET.fromstring(veri)
+          for prog in kaynak_root.findall("programme"):
+              eski_ch_id = prog.get("channel")
+              if eski_ch_id in id_haritasi:
+                  prog.set("channel", id_haritasi[eski_ch_id])
+                  ana_tv.append(prog)
 
-                  for ch in kaynak_root.findall("channel"):
-                      eski_id = ch.get("id")
-                      disp = ch.find("display-name")
-                      ham_isim = disp.text if (disp is not None and disp.text) else eski_id
-                      if not ham_isim:
-                          continue
-                      sade_ad = ismi_sadelestir(ham_isim)
-                      if not sade_ad:
-                          continue
-                      id_haritasi[eski_id] = sade_ad
-                      if sade_ad not in eklenen_kanallar:
-                          yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
-                          yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
-                          yeni_disp.text = sade_ad
-                          eklenen_kanallar[sade_ad] = True
-
-                  for prog in kaynak_root.findall("programme"):
-                      eski_ch_id = prog.get("channel")
-                      if eski_ch_id in id_haritasi:
-                          prog.set("channel", id_haritasi[eski_ch_id])
-                          ana_tv.append(prog)
-
-                  print("Islendi:", dosya, "| Toplam kanal:", len(eklenen_kanallar))
-              except Exception as e:
-                  print("Dosya hatasi:", dosya, e)
-
-          xml_icerik = ET.tostring(ana_tv, encoding="utf-8", xml_declaration=True).decode("utf-8")
-
-          ham_id = os.environ.get("GIST_ID", "").strip()
-          gist_id = [parca for parca in ham_id.split("/") if parca][-1]
-          gist_token = os.environ.get("GIST_TOKEN", "").strip()
-
-          hedef_adres = "https://" + "://github.com" + gist_id
-          print("Baglanilan Gist ID:", gist_id)
-
-          payload = json.dumps({"files": {"guide.xml": {"content": xml_icerik}}}).encode("utf-8")
-          gist_req = urllib.request.Request(hedef_adres, data=payload, method="PATCH", headers={
-              "Authorization": "token " + gist_token,
-              "Accept": "application/vnd.github.v3+json",
-              "Content-Type": "application/json",
-              "User-Agent": "EPG-Gist-Updater"
-          })
-          with urllib.request.urlopen(gist_req, timeout=60) as resp:
-              print("Gist basariyla guncellendi! Durum:", resp.status)
+          tree = ET.ElementTree(ana_tv)
+          tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
+          print("Toplam sade kanal sayisi:", len(eklenen_kanallar))
           EOF
+
+      - name: Gist Guncelle
+        env:
+          GH_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: |
+          CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
+          gh gist edit "$CLEAN_ID" guide.xml
