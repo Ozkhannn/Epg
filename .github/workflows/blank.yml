@@ -1,4 +1,4 @@
-name: TiviMate Tam Uyumlu Turkiye EPG (Gist)
+name: Ozel Yerli Kanal Filtreli Turkiye EPG
 
 on:
   schedule:
@@ -9,12 +9,12 @@ jobs:
   epg-uret:
     runs-on: ubuntu-latest
     steps:
-      - name: Node.js Kur
+      - name: Node Kur
         uses: actions/setup-node@v5
         with:
           node-version: '24'
 
-      - name: Kaziyiciyi Hizli Hazirla
+      - name: Kaziyici Hazirla
         run: |
           DOMAIN="github.com"
           REPO_PATH="iptv-org/epg.git"
@@ -22,132 +22,79 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Tum .tr Uzantili Yerli Kanallari Cek
+      - name: Yerli Kanallari Filtrele ve Cek
         run: |
           cd epg_tool
-          echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temiz_kanallar.xml
-          grep -rh '\.tr"' sites/*/*.channels.xml | grep "<channel " >> temiz_kanallar.xml || true
-          echo '</channels>' >> temiz_kanallar.xml
-          npm run grab -- --channels=temiz_kanallar.xml --output=../ham_guide.xml --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
-
-      - name: TiviMate Temiz XML Olustur
-        run: |
-          python3 - << 'EOF'
+          python3 -c '
           import re, xml.etree.ElementTree as ET
+          HEDEF = {"trt1","trt2","trthaber","trtspor","trtsporyildiz","trtbelgesel","trtcocuk","trtmuzik","trtturk","trtavaz","trtkurdi","trtworld","kanald","eurod","kanalddrama","atv","atvahaber","a2","showtv","showturk","showmax","startv","eurostar","now","nowtv","fox","foxturk","tv8","tv85","tv8bucuk","kanal7","ulketv","beyaztv","teve2","tv4","360","tlc","dmax","cnbce","ekoltv","beinsports","beinsports1","beinsports2","beinsports3","beinsports4","beinsports5","beinsportsmax1","beinsportsmax2","beinsportshaber","tivibuspor","tivibuspor1","tivibuspor2","tivibuspor3","tivibuspor4","ssport","ssport1","ssport2","smartspor","smartspor1","smartspor2","eurosport1","eurosport2","aspor","htspor","sportstv","fbtv","ntv","cnnturk","haberturk","ahaber","anews","apara","bloomberght","ekoturk","halktv","sozcutv","tele1","krttv","haberglobal","24tv","tgrthaber","tgrteu","tgrtbelgesel","benguturk","tv100","akittv","liderhabertv","flashhaber","tytturk","nationalgeographic","natgeo","natgeowild","discoverychannel","discovery","bbcearth","bbcfirst","history","tarihtv","habitattv","minikago","minikacocuk","cartoonnetwork","disneyjunior","nickjr","nickelodeon","babytv","powerturk","powertv","kralpop","dreamturk","number1turk","number1tv"}
+          def norm(m):
+              s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
+              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
+              return re.sub(r"[^a-z0-9]", "", s)
+          siteler = ["sites/tvplus.com.tr/tvplus.com.tr.channels.xml","sites/blue.ch/blue.ch.channels.xml","sites/digitalb.al/digitalb.al.channels.xml","sites/://melita.com","sites/tivibu.com.tr/tivibu.com.tr.channels.xml"]
+          out = ET.Element("channels")
+          for d in siteler:
+              try:
+                  for ch in ET.parse(d).getroot().findall("channel"):
+                      if norm(ch.text or "") in HEDEF or norm(ch.get("xmltv_id","").split(".")[0]) in HEDEF:
+                          out.append(ch)
+              except Exception:
+                  pass
+          ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
+          '
+          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=25 --timeout=10000 >/dev/null 2>&1 || true
 
-          SOZLUK = {
-              "trt1": "TRT 1", "trt 1": "TRT 1",
-              "trt spor": "TRT Spor", "trtspor": "TRT Spor",
-              "trt haber": "TRT Haber", "trthaber": "TRT Haber",
-              "trt belgesel": "TRT Belgesel", "trtbelgesel": "TRT Belgesel",
-              "trt cocuk": "TRT Çocuk", "trt çocuk": "TRT Çocuk",
-              "trt muzik": "TRT Müzik", "trt müzik": "TRT Müzik",
-              "trt turk": "TRT Türk", "trt türk": "TRT Türk",
-              "trt world": "TRT World",
-              "a spor": "A Spor", "aspor": "A Spor",
-              "a para": "A Para", "apara": "A Para",
-              "a haber": "A Haber", "ahaber": "A Haber",
-              "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
-              "cnn turk": "CNN Türk", "cnn türk": "CNN Türk",
-              "show tv": "Show TV", "showtv": "Show TV",
-              "show turk": "Show Türk", "show türk": "Show Türk", "showturk": "Show Türk",
-              "show max": "Show Max", "showmax": "Show Max",
-              "kanal d": "Kanal D", "kanald": "Kanal D",
-              "star tv": "Star TV", "startv": "Star TV",
-              "euro star": "Euro Star", "eurostar": "Euro Star",
-              "euro d": "Euro D", "eurod": "Euro D",
-              "beinsports": "beIN Sports 1", "bein sports": "beIN Sports 1",
-              "beinsports 2": "beIN Sports 2", "bein sports 2": "beIN Sports 2",
-              "beinsports 3": "beIN Sports 3", "bein sports 3": "beIN Sports 3",
-              "beinsports 4": "beIN Sports 4", "bein sports 4": "beIN Sports 4",
-              "bein sports haber": "beIN Sports Haber",
-              "tivibu spor": "Tivibu Spor",
-              "tivibu spor 1": "Tivibu Spor 1", "tivibu spor 2": "Tivibu Spor 2",
-              "tivibu spor 3": "Tivibu Spor 3", "tivibu spor 4": "Tivibu Spor 4",
-              "power turk": "Power Türk", "power türk": "Power Türk",
-              "number1 turk": "Number1 Türk", "number1 türk": "Number1 Türk",
-              "dream turk": "Dream Türk", "dream türk": "Dream Türk",
-              "ulke tv": "Ülke TV", "ülke tv": "Ülke TV",
-              "benguturk": "Bengütürk", "bengütürk": "Bengütürk",
-              "habitat tv": "Habitat TV",
-              "24": "24 TV", "24 tv": "24 TV"
-          }
-
-          def metin_temizle(s):
-              if not s:
-                  return ""
-              # TiviMate XML ayristiricisini bozan kontrol karakterlerini sil
-              return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s).strip()
-
-          def ascii_id_yap(ad):
-              tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
-              temiz = ad.translate(tr_map).lower()
-              return re.sub(r"[^a-z0-9]", "", temiz)
-
-          def ismi_sadelestir(isim):
-              isim = metin_temizle(isim)
-              temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
-              temiz = re.sub(r"[\(\)\[\]\.\-_&]", " ", temiz)
-              temiz = " ".join(temiz.split()).strip()
-              return SOZLUK.get(temiz.lower(), temiz)
-
-          kaynak_root = ET.parse("ham_guide.xml").getroot()
-          id_haritasi = {}
-          aktif_kanallar = {}
-          eklenen_programlar = set()
-          program_elemanlari = []
-
-          for ch in kaynak_root.findall("channel"):
-              eski_id = ch.get("id")
-              disp = ch.find("display-name")
-              ham_isim = disp.text if (disp is not None and disp.text) else eski_id
-              if ham_isim:
-                  sade_ad = ismi_sadelestir(ham_isim)
-                  if sade_ad:
-                      id_haritasi[eski_id] = sade_ad
-
-          for prog in kaynak_root.findall("programme"):
-              eski_ch_id = prog.get("channel")
-              baslik_el = prog.find("title")
-              if baslik_el is None or not baslik_el.text or not baslik_el.text.strip():
-                  continue
-              if eski_ch_id in id_haritasi:
-                  sade_ad = id_haritasi[eski_ch_id]
-                  temiz_id = ascii_id_yap(sade_ad)
-                  if not temiz_id:
-                      continue
-                  baslangic = prog.get("start", "")
-                  bitis = prog.get("stop", "")
-                  if not baslangic or not bitis:
-                      continue
-                  anahtar = (temiz_id, baslangic)
-                  if anahtar not in eklenen_programlar:
-                      eklenen_programlar.add(anahtar)
-                      yeni_prog = ET.Element("programme", {
-                          "start": baslangic,
-                          "stop": bitis,
-                          "channel": temiz_id
-                      })
-                      ET.SubElement(yeni_prog, "title", {"lang": "tr"}).text = metin_temizle(baslik_el.text)
-                      desc_el = prog.find("desc")
-                      if desc_el is not None and desc_el.text:
-                          ET.SubElement(yeni_prog, "desc", {"lang": "tr"}).text = metin_temizle(desc_el.text)
-                      program_elemanlari.append(yeni_prog)
-                      aktif_kanallar[temiz_id] = sade_ad
-
-          ana_tv = ET.Element("tv", {"generator-info-name": "TiviMate-Turkiye-EPG"})
-          for temiz_id, gorunen_ad in sorted(aktif_kanallar.items(), key=lambda x: x[1]):
-              yeni_ch = ET.SubElement(ana_tv, "channel", {"id": temiz_id})
-              yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
-              yeni_disp.text = gorunen_ad
-
-          for prog in program_elemanlari:
-              ana_tv.append(prog)
-
-          tree = ET.ElementTree(ana_tv)
-          tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"OZET -> TiviMate uyumlu kanal: {len(aktif_kanallar)} | Tekil program: {len(program_elemanlari)}")
-          EOF
+      - name: TiviMate XML ve Saat Ayari
+        run: |
+          python3 -c '
+          import re, xml.etree.ElementTree as ET
+          from datetime import datetime, timedelta
+          ADLAR = {"trt1":"TRT 1","trt2":"TRT 2","trthaber":"TRT Haber","trtspor":"TRT Spor","trtsporyildiz":"TRT Spor Yıldız","trtbelgesel":"TRT Belgesel","trtcocuk":"TRT Çocuk","trtmuzik":"TRT Müzik","trtturk":"TRT Türk","trtavaz":"TRT Avaz","trtkurdi":"TRT Kurdi","trtworld":"TRT World","kanald":"Kanal D","eurod":"Euro D","kanalddrama":"Kanal D Drama","atv":"ATV","a2":"A2","showtv":"Show TV","showturk":"Show Türk","showmax":"Show Max","startv":"Star TV","eurostar":"Euro Star","now":"NOW","nowtv":"NOW","fox":"NOW","tv8":"TV8","tv85":"TV8,5","tv8bucuk":"TV8,5","kanal7":"Kanal 7","ulketv":"Ülke TV","beyaztv":"Beyaz TV","teve2":"Teve2","tv4":"TV 4","360":"360","tlc":"TLC","dmax":"DMAX","cnbce":"CNBC-e","ekoltv":"Ekol TV","beinsports":"beIN Sports 1","beinsports1":"beIN Sports 1","beinsports2":"beIN Sports 2","beinsports3":"beIN Sports 3","beinsports4":"beIN Sports 4","beinsports5":"beIN Sports 5","beinsportsmax1":"beIN Sports MAX 1","beinsportsmax2":"beIN Sports MAX 2","beinsportshaber":"beIN Sports Haber","tivibuspor":"Tivibu Spor","tivibuspor1":"Tivibu Spor 1","tivibuspor2":"Tivibu Spor 2","tivibuspor3":"Tivibu Spor 3","tivibuspor4":"Tivibu Spor 4","ssport":"S Sport","ssport1":"S Sport 1","ssport2":"S Sport 2","smartspor":"Smart Spor","smartspor1":"Smart Spor 1","smartspor2":"Smart Spor 2","eurosport1":"Eurosport 1","eurosport2":"Eurosport 2","aspor":"A Spor","htspor":"HT Spor","sportstv":"Sports TV","fbtv":"FB TV","ntv":"NTV","cnnturk":"CNN Türk","haberturk":"Habertürk","ahaber":"A Haber","anews":"A News","apara":"A Para","bloomberght":"Bloomberg HT","ekoturk":"Ekotürk","halktv":"Halk TV","sozcutv":"Sözcü TV","tele1":"Tele1","krttv":"KRT TV","haberglobal":"Haber Global","24tv":"24 TV","tgrthaber":"TGRT Haber","tgrteu":"TGRT EU","tgrtbelgesel":"TGRT Belgesel","benguturk":"Bengütürk","tv100":"TV100","akittv":"Akit TV","liderhabertv":"Lider Haber","flashhaber":"Flash Haber","tytturk":"TYT Türk","nationalgeographic":"National Geographic","natgeo":"National Geographic","natgeowild":"Nat Geo Wild","discoverychannel":"Discovery Channel","discovery":"Discovery Channel","bbcearth":"BBC Earth","bbcfirst":"BBC First","history":"History","tarihtv":"Tarih TV","habitattv":"Habitat TV","minikago":"MinikaGO","minikacocuk":"Minika Çocuk","cartoonnetwork":"Cartoon Network","disneyjunior":"Disney Junior","nickjr":"Nick Jr","nickelodeon":"Nickelodeon","babytv":"Baby TV","powerturk":"Power Türk","powertv":"Power TV","kralpop":"Kral Pop","dreamturk":"Dream Türk","number1turk":"Number1 Türk","number1tv":"Number1 TV"}
+          def temiz(s): return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
+          def norm(m):
+              s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
+              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
+              return re.sub(r"[^a-z0-9]", "", s)
+          def saat(z, f):
+              if f == 0 or len(z) < 14: return z
+              try: return (datetime.strptime(z[:14], "%Y%m%d%H%M%S") + timedelta(hours=f)).strftime("%Y%m%d%H%M%S") + z[14:]
+              except Exception: return z
+          kok = ET.parse("ham_guide.xml").getroot()
+          harita, kanallar, eklenen, proglar = {}, {}, set(), []
+          for ch in kok.findall("channel"):
+              eid = ch.get("id")
+              d = ch.find("display-name")
+              ham = d.text if (d is not None and d.text) else eid
+              if ham and norm(ham): harita[eid] = (norm(ham), ADLAR.get(norm(ham), temiz(ham)))
+          for p in kok.findall("programme"):
+              eid = p.get("channel")
+              b_el = p.find("title")
+              if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita: continue
+              tid, gad = harita[eid]
+              baslik = temiz(b_el.text)
+              if tid == "tv4" and any(k in baslik for k in ["Policjantki","Trudne","Disco","Telezakupy"]): continue
+              ic = p.find("icon")
+              im = p.find("image")
+              k_url = (ic.get("src","") if ic is not None else "") + (im.text if (im is not None and im.text) else "")
+              fark = 2 if ("sctv.ch" in k_url or "melitacable" in k_url) else 0
+              st, sp = saat(p.get("start",""), fark), saat(p.get("stop",""), fark)
+              if not st or not sp or (tid, st) in eklenen: continue
+              eklenen.add((tid, st))
+              yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
+              ET.SubElement(yp, "title", {"lang": "tr"}).text = baslik
+              de = p.find("desc")
+              if de is not None and de.text: ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
+              proglar.append(yp)
+              kanallar[tid] = gad
+          tv = ET.Element("tv", {"generator-info-name": "TiviMate-Turkiye-EPG"})
+          for tid, gad in sorted(kanallar.items()):
+              yc = ET.SubElement(tv, "channel", {"id": tid})
+              ET.SubElement(yc, "display-name", {"lang": "tr"}).text = gad
+          for yp in proglar: tv.append(yp)
+          ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
+          print(f"OZET -> Kanal: {len(kanallar)} | Program: {len(proglar)}")
+          '
 
       - name: Gist Guncelle
         env:
