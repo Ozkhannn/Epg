@@ -20,7 +20,8 @@ jobs:
           REPO_PATH="iptv-org/epg.git"
           git clone --depth 1 --single-branch "https://${DOMAIN}/${REPO_PATH}" epg_tool >/dev/null 2>&1
           cd epg_tool
-          npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
+          # devDependencies de kurulsun ki prepare/postinstall betikleri sorunsuz calissin
+          npm install --no-audit --no-fund --silent >/dev/null 2>&1
 
       - name: Yerli Kanallari Hizli Tara ve Cek
         run: |
@@ -46,6 +47,11 @@ jobs:
           print("Taranacak yerli kanal kaydi:", len(out))
           '
           npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=8000 >/dev/null 2>&1 || true
+          # grab basarisiz olsa bile bos dosya ile devam etmemek icin kontrol
+          if [ ! -s ../ham_guide.xml ]; then
+            echo "HATA: ham_guide.xml olusturulamadi veya bos."
+            exit 1
+          fi
 
       - name: Yedekli TiviMate XML Olustur
         run: |
@@ -58,10 +64,8 @@ jobs:
               s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
-          def saat(z, f):
-              if f == 0 or len(z) < 14: return z
-              try: return (datetime.strptime(z[:14], "%Y%m%d%H%M%S") + timedelta(hours=f)).strftime("%Y%m%d%H%M%S") + z[14:]
-              except Exception: return z
+          # NOT: Saat dilimi kaydirma islemi kaldirildi.
+          # iptv-org/epg site config'leri kendi TZ donusumlerini zaten yapar.
           kok = ET.parse("ham_guide.xml").getroot()
           harita, sayac, kanallar, eklenen, proglar = {}, {}, {}, set(), []
           for ch in kok.findall("channel"):
@@ -81,11 +85,8 @@ jobs:
               if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita: continue
               tid, gad = harita[eid]
               baslik = temiz(b_el.text)
-              ic = p.find("icon")
-              im = p.find("image")
-              k_url = (ic.get("src","") if ic is not None else "") + (im.text if (im is not None and im.text) else "")
-              fark = 2 if ("sctv.ch" in k_url or "melitacable" in k_url) else 0
-              st, sp = saat(p.get("start",""), fark), saat(p.get("stop",""), fark)
+              st = p.get("start","")
+              sp = p.get("stop","")
               if not st or not sp or (tid, st) in eklenen: continue
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
@@ -95,7 +96,7 @@ jobs:
               proglar.append(yp)
               kanallar[tid] = gad
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
-          for tid, gad in sorted(kanallar.items(), key=lambda x: x):
+          for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
               ET.SubElement(yc, "display-name", {"lang": "tr"}).text = gad
           for yp in proglar: tv.append(yp)
@@ -109,4 +110,6 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
-          gh gist edit "$CLEAN_ID" guide.xml
+          # gh gist edit interaktif editore dusebilir; API ile dosyayi guncelle
+          jq -n --rawfile content guide.xml '{files: {"guide.xml": {content: $content}}}' | \
+            gh api -X PATCH /gists/"$CLEAN_ID" --input -
