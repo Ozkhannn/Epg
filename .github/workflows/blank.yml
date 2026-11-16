@@ -1,4 +1,4 @@
-name: Hizli ve Tam Turkiye EPG (Gist)
+name: Tam Kapsamli Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Node.js Kur
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Kaziyiciyi Hizli Hazirla
         run: |
@@ -22,14 +22,22 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Calisan Turkiye Kaynaklarini Cek
+      - name: Gercek Veri Veren Kaynaklari Cek
         run: |
           cd epg_tool
           mkdir -p ../kaynak_ciktilari
 
-          SITELER="tvplus.com.tr tivibu.com.tr digiturk.com.tr dsmart.com.tr trt.net.tr kanald.com.tr showtv.com.tr atv.com.tr star.com.tr tv8.com.tr teleboy.ch"
+          # 1. TV+ (lang filtresi olmadan tum kanallar)
+          if [ -f "sites/tvplus.com.tr/tvplus.com.tr.channels.xml" ]; then
+            cp "sites/tvplus.com.tr/tvplus.com.tr.channels.xml" temp_tvplus.xml
+            npm run grab -- --channels=temp_tvplus.xml --output="../kaynak_ciktilari/tvplus.xml" --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
+            prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/tvplus.xml" 2>/dev/null || echo 0)
+            aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/tvplus.xml" 2>/dev/null | sort -u | wc -l || echo 0)
+            echo "Kaynak: tvplus.com.tr -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
+          fi
 
-          for site_adi in $SITELER; do
+          # 2. Yabanci platformlardaki Turk kanallari (blue.ch, melita.com, digitalb.al)
+          for site_adi in blue.ch melita.com digitalb.al; do
             dosya="sites/${site_adi}/${site_adi}.channels.xml"
             if [ -f "$dosya" ]; then
               echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temp_ch.xml
@@ -38,15 +46,10 @@ jobs:
 
               kanal_sayisi=$(grep -c '<channel ' temp_ch.xml || true)
               if [ "$kanal_sayisi" -gt 0 ]; then
-                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=15 --timeout=12000 >/dev/null 2>&1 || true
-                
-                if [ -f "../kaynak_ciktilari/${site_adi}.xml" ]; then
-                  prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" || true)
-                  aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/${site_adi}.xml" | sort -u | wc -l || true)
-                  echo "Kaynak: ${site_adi} -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
-                else
-                  echo "Kaynak: ${site_adi} -> 0 kanal, 0 program geldi."
-                fi
+                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
+                prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" 2>/dev/null || echo 0)
+                aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/${site_adi}.xml" 2>/dev/null | sort -u | wc -l || echo 0)
+                echo "Kaynak: ${site_adi} -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
               fi
             fi
           done
@@ -64,6 +67,9 @@ jobs:
                   "a spor": "A Spor", "a para": "A Para", "a haber": "A Haber",
                   "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
                   "show turk": "Show Türk", "show türk": "Show Türk", "showturk": "Show Türk",
+                  "show tv": "Show TV", "showtv": "Show TV",
+                  "kanal d": "Kanal D", "kanald": "Kanal D",
+                  "star tv": "Star TV", "startv": "Star TV",
                   "showmax": "Show Max", "show max": "Show Max",
                   "trt turk": "TRT Türk", "trt türk": "TRT Türk",
                   "power turk": "Power Türk", "power türk": "Power Türk",
@@ -109,7 +115,6 @@ jobs:
               except Exception:
                   pass
 
-          # TiviMate standartlarina uygun olarak ONCE <channel>, SONRA <programme> eklenir
           ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           for sade_ad in sorted(aktif_kanallar):
               yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
