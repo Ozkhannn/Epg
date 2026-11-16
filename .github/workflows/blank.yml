@@ -14,19 +14,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: EPG Olustur ve Gist Guncelle
+      - name: EPG Kaynaklarini Indir
+        run: |
+          mkdir -p epg_data
+          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "http://epgshare01.online" -o epg_data/tr1.xml.gz || true
+          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://githubusercontent.com" -o epg_data/tr2.xml || true
+          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://githubusercontent.com" -o epg_data/tr3.xml || true
+
+      - name: Sade EPG Olustur ve Gist Guncelle
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           python3 - << 'EOF'
-          import os, json, urllib.request, gzip, re, xml.etree.ElementTree as ET
-
-          KAYNAKLAR = [
-              "https://epg.pw",
-              "https://epgshare01.online",
-              "https://open-epg.com"
-          ]
+          import os, glob, json, gzip, re, urllib.request, xml.etree.ElementTree as ET
 
           def ismi_sadelestir(isim):
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr)\b", "", isim, flags=re.IGNORECASE)
@@ -37,41 +38,49 @@ jobs:
           eklenen_kanallar = {}
           id_haritasi = {}
 
-          for url in KAYNAKLAR:
+          for dosya in glob.glob("epg_data/*"):
               try:
-                  req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                  with urllib.request.urlopen(req, timeout=30) as res:
-                      veri = gzip.decompress(res.read()) if url.endswith(".gz") else res.read()
-                      kaynak_root = ET.fromstring(veri)
+                  if os.path.getsize(dosya) < 1000:
+                      continue
+                  with open(dosya, "rb") as f:
+                      ham = f.read()
+                  veri = gzip.decompress(ham) if dosya.endswith(".gz") else ham
+                  
+                  if not veri.lstrip().startswith(b"<"):
+                      print("Gecersiz XML atlandi:", dosya)
+                      continue
 
-                      for ch in kaynak_root.findall("channel"):
-                          eski_id = ch.get("id")
-                          disp = ch.find("display-name")
-                          ham_isim = disp.text if (disp is not None and disp.text) else eski_id
-                          if not ham_isim:
-                              continue
-                          sade_ad = ismi_sadelestir(ham_isim)
-                          if not sade_ad:
-                              continue
-                          id_haritasi[eski_id] = sade_ad
-                          if sade_ad not in eklenen_kanallar:
-                              yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
-                              yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
-                              yeni_disp.text = sade_ad
-                              eklenen_kanallar[sade_ad] = True
+                  kaynak_root = ET.fromstring(veri)
 
-                      for prog in kaynak_root.findall("programme"):
-                          eski_ch_id = prog.get("channel")
-                          if eski_ch_id in id_haritasi:
-                              prog.set("channel", id_haritasi[eski_ch_id])
-                              ana_tv.append(prog)
-                  print("Islendi:", url)
+                  for ch in kaynak_root.findall("channel"):
+                      eski_id = ch.get("id")
+                      disp = ch.find("display-name")
+                      ham_isim = disp.text if (disp is not None and disp.text) else eski_id
+                      if not ham_isim:
+                          continue
+                      sade_ad = ismi_sadelestir(ham_isim)
+                      if not sade_ad:
+                          continue
+                      id_haritasi[eski_id] = sade_ad
+                      if sade_ad not in eklenen_kanallar:
+                          yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
+                          yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
+                          yeni_disp.text = sade_ad
+                          eklenen_kanallar[sade_ad] = True
+
+                  for prog in kaynak_root.findall("programme"):
+                      eski_ch_id = prog.get("channel")
+                      if eski_ch_id in id_haritasi:
+                          prog.set("channel", id_haritasi[eski_ch_id])
+                          ana_tv.append(prog)
+
+                  print("Basariyla islendi:", dosya, "| Toplam kanal:", len(eklenen_kanallar))
               except Exception as e:
-                  print("Hata:", url, e)
+                  print("Dosya atlandi:", dosya, e)
 
           xml_icerik = ET.tostring(ana_tv, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
-          gist_id = os.environ["GIST_ID"].strip()
+          gist_id = os.environ["GIST_ID"].strip().split("/")[-1]
           gist_token = os.environ["GIST_TOKEN"].strip()
           gist_url = f"https://github.com{gist_id}"
 
@@ -82,6 +91,6 @@ jobs:
               "Content-Type": "application/json",
               "User-Agent": "EPG-Gist-Updater"
           })
-          with urllib.request.urlopen(gist_req, timeout=30) as resp:
-              print("Gist guncellendi! Durum:", resp.status)
+          with urllib.request.urlopen(gist_req, timeout=60) as resp:
+              print("Gist basariyla guncellendi! Durum:", resp.status)
           EOF
