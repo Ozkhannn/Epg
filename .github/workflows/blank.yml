@@ -17,9 +17,10 @@ jobs:
       - name: EPG Kaynaklarini Indir
         run: |
           mkdir -p epg_data
-          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "http://epgshare01.online" -o epg_data/tr1.xml.gz || true
-          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://githubusercontent.com" -o epg_data/tr2.xml || true
-          curl -sL --max-time 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://githubusercontent.com" -o epg_data/tr3.xml || true
+          curl -sL --max-time 60 -A "Mozilla/5.0" "http://epgshare01.online" -o epg_data/tr1.xml.gz || true
+          curl -sL --max-time 60 -A "Mozilla/5.0" "https://open-epg.com" -o epg_data/tr2.xml.gz || true
+          curl -sL --max-time 60 -A "Mozilla/5.0" "https://githubusercontent.com" -o epg_data/tr3.xml || true
+          ls -lh epg_data/
 
       - name: Sade EPG Olustur ve Gist Guncelle
         env:
@@ -41,13 +42,14 @@ jobs:
           for dosya in glob.glob("epg_data/*"):
               try:
                   if os.path.getsize(dosya) < 1000:
+                      print("Cok kucuk dosya atlandi:", dosya)
                       continue
                   with open(dosya, "rb") as f:
                       ham = f.read()
                   veri = gzip.decompress(ham) if dosya.endswith(".gz") else ham
                   
                   if not veri.lstrip().startswith(b"<"):
-                      print("Gecersiz XML atlandi:", dosya)
+                      print("XML degil, atlandi:", dosya)
                       continue
 
                   kaynak_root = ET.fromstring(veri)
@@ -74,19 +76,22 @@ jobs:
                           prog.set("channel", id_haritasi[eski_ch_id])
                           ana_tv.append(prog)
 
-                  print("Basariyla islendi:", dosya, "| Toplam kanal:", len(eklenen_kanallar))
+                  print("Islendi:", dosya, "| Toplam kanal:", len(eklenen_kanallar))
               except Exception as e:
-                  print("Dosya atlandi:", dosya, e)
+                  print("Dosya hatasi:", dosya, e)
 
           xml_icerik = ET.tostring(ana_tv, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
-          gist_id = os.environ["GIST_ID"].strip().split("/")[-1]
-          gist_token = os.environ["GIST_TOKEN"].strip()
-          gist_url = f"https://github.com{gist_id}"
+          ham_id = os.environ.get("GIST_ID", "").strip()
+          gist_id = [parca for parca in ham_id.split("/") if parca][-1]
+          gist_token = os.environ.get("GIST_TOKEN", "").strip()
+
+          hedef_adres = "https://" + "://github.com" + gist_id
+          print("Baglanilan Gist ID:", gist_id)
 
           payload = json.dumps({"files": {"guide.xml": {"content": xml_icerik}}}).encode("utf-8")
-          gist_req = urllib.request.Request(gist_url, data=payload, method="PATCH", headers={
-              "Authorization": f"token {gist_token}",
+          gist_req = urllib.request.Request(hedef_adres, data=payload, method="PATCH", headers={
+              "Authorization": "token " + gist_token,
               "Accept": "application/vnd.github.v3+json",
               "Content-Type": "application/json",
               "User-Agent": "EPG-Gist-Updater"
