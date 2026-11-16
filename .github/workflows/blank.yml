@@ -1,4 +1,4 @@
-name: Ozel Yerli Kanal Filtreli Turkiye EPG
+name: Tam Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Yerli Kanallari Filtrele ve Cek
+      - name: Yerli Kanallari Tara ve Cek
         run: |
           cd epg_tool
           python3 -c '
@@ -37,7 +37,9 @@ jobs:
           for d in siteler:
               try:
                   for ch in ET.parse(d).getroot().findall("channel"):
-                      if norm(ch.text or "") in HEDEF or norm(ch.get("xmltv_id","").split(".")[0]) in HEDEF:
+                      xid = ch.get("xmltv_id","")
+                      ilk_parca = xid.partition(".")[0]
+                      if norm(ch.text or "") in HEDEF or norm(ilk_parca) in HEDEF or xid.endswith(".tr"):
                           out.append(ch)
               except Exception:
                   pass
