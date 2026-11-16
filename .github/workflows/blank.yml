@@ -1,4 +1,4 @@
-name: Yedekli Coklu Turkiye EPG (Gist)
+name: Hizli ve Yedekli Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,19 +22,31 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Yerli Kanallari Tara ve Cek
+      - name: Yerli Kanallari Hizli Tara ve Cek
         run: |
           cd epg_tool
           python3 -c '
-          import glob, re, xml.etree.ElementTree as ET
+          import re, xml.etree.ElementTree as ET
           HEDEF = {"trt1","trt2","trthaber","trtspor","trtsporyildiz","trtbelgesel","trtcocuk","trtmuzik","trtturk","trtavaz","trtkurdi","trtworld","kanald","eurod","kanalddrama","atv","atvahaber","a2","showtv","showturk","showmax","startv","eurostar","now","nowtv","fox","foxturk","tv8","tv85","tv8bucuk","kanal7","ulketv","beyaztv","teve2","tv4","360","tlc","dmax","cnbce","ekoltv","beinsports","beinsports1","beinsports2","beinsports3","beinsports4","beinsports5","beinsportsmax1","beinsportsmax2","beinsportshaber","tivibuspor","tivibuspor1","tivibuspor2","tivibuspor3","tivibuspor4","ssport","ssport1","ssport2","smartspor","smartspor1","smartspor2","eurosport1","eurosport2","aspor","htspor","sportstv","fbtv","ntv","cnnturk","haberturk","ahaber","anews","apara","bloomberght","ekoturk","halktv","sozcutv","tele1","krttv","haberglobal","24tv","tgrthaber","tgrteu","tgrtbelgesel","benguturk","tv100","akittv","liderhabertv","flashhaber","tytturk","nationalgeographic","natgeo","natgeowild","discoverychannel","discovery","bbcearth","bbcfirst","history","tarihtv","habitattv","minikago","minikacocuk","cartoonnetwork","disneyjunior","nickjr","nickelodeon","babytv","powerturk","powertv","kralpop","dreamturk","number1turk","number1tv"}
           def norm(m):
               s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
+          SITELER = [
+              "sites/tvplus.com.tr/tvplus.com.tr.channels.xml",
+              "sites/blue.ch/blue.ch.channels.xml",
+              "sites/digitalb.al/digitalb.al.channels.xml",
+              "sites/://melita.com",
+              "sites/tivibu.com.tr/tivibu.com.tr.channels.xml",
+              "sites/trt.net.tr/trt.net.tr.channels.xml",
+              "sites/kanald.com.tr/kanald.com.tr.channels.xml",
+              "sites/atv.com.tr/atv.com.tr.channels.xml",
+              "sites/showtv.com.tr/showtv.com.tr.channels.xml",
+              "sites/star.com.tr/star.com.tr.channels.xml",
+              "sites/tv8.com.tr/tv8.com.tr.channels.xml"
+          ]
           out = ET.Element("channels")
-          for d in glob.glob("sites/*/*.channels.xml"):
-              if any(x in d for x in ["digiturk.com.tr", "dsmart.com.tr", "vodafone.com.tr"]): continue
+          for d in SITELER:
               try:
                   for ch in ET.parse(d).getroot().findall("channel"):
                       if norm(ch.text or "") in HEDEF:
@@ -42,9 +54,9 @@ jobs:
               except Exception:
                   pass
           ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
-          print("Taranan toplam kanal kaydi:", len(out))
+          print("Taranacak yerli kanal kaydi:", len(out))
           '
-          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=25 --timeout=10000 >/dev/null 2>&1 || true
+          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=6000 >/dev/null 2>&1 || true
 
       - name: Yedekli TiviMate XML Olustur
         run: |
