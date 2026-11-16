@@ -1,4 +1,4 @@
-name: TVPlus Tam Turkiye EPG (Gist)
+name: Tam Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,33 +22,38 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: TV+ Tum Kanallari Cek
+      - name: Tum Turkiye Kaynaklarini Paralel Cek
         run: |
           cd epg_tool
-          npm run grab -- --channels="sites/tvplus.com.tr/tvplus.com.tr.channels.xml" --output="../ham_guide.xml" --days=2 --maxConnections=25 --timeout=10000 >/dev/null 2>&1 || true
+          echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temiz_kanallar.xml
+          grep -rh 'lang="tr"' sites/*/*.channels.xml | grep "<channel " >> temiz_kanallar.xml || true
+          echo '</channels>' >> temiz_kanallar.xml
+          npm run grab -- --channels=temiz_kanallar.xml --output=../ham_guide.xml --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
 
-      - name: TiviMate Uyumlu XML Olustur
+      - name: Sadelestir ve TiviMate XML Olustur
         run: |
           python3 - << 'EOF'
           import re, xml.etree.ElementTree as ET
+
+          SOZLUK = {
+              "a spor": "A Spor", "aspor": "A Spor",
+              "a para": "A Para", "apara": "A Para",
+              "a haber": "A Haber", "ahaber": "A Haber",
+              "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
+              "show turk": "Show Türk", "show türk": "Show Türk", "showturk": "Show Türk",
+              "showmax": "Show Max", "show max": "Show Max",
+              "trt turk": "TRT Türk", "trt türk": "TRT Türk",
+              "power turk": "Power Türk", "power türk": "Power Türk",
+              "eurostar": "Euro Star", "euro star": "Euro Star",
+              "tv4": "TV 4", "tv 4": "TV 4",
+              "24": "24 TV", "24 tv": "24 TV"
+          }
 
           def ismi_sadelestir(isim):
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
               temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
               temiz = " ".join(temiz.split()).strip()
-              sozluk = {
-                  "a spor": "A Spor", "a para": "A Para", "a haber": "A Haber",
-                  "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
-                  "show turk": "Show Türk", "show türk": "Show Türk", "showturk": "Show Türk",
-                  "show tv": "Show TV", "showtv": "Show TV",
-                  "kanal d": "Kanal D", "kanald": "Kanal D",
-                  "star tv": "Star TV", "startv": "Star TV",
-                  "showmax": "Show Max", "show max": "Show Max",
-                  "trt turk": "TRT Türk", "trt türk": "TRT Türk",
-                  "power turk": "Power Türk", "power türk": "Power Türk",
-                  "24": "24 TV", "24 tv": "24 TV"
-              }
-              return sozluk.get(temiz.lower(), temiz)
+              return SOZLUK.get(temiz.lower(), temiz)
 
           kaynak_root = ET.parse("ham_guide.xml").getroot()
           id_haritasi = {}
@@ -81,7 +86,7 @@ jobs:
                       program_elemanlari.append(prog)
                       aktif_kanallar.add(sade_ad)
 
-          ana_tv = ET.Element("tv", {"generator-info-name": "TVPlus-Turkiye-EPG"})
+          ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           for sade_ad in sorted(aktif_kanallar):
               yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
               yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
@@ -92,7 +97,7 @@ jobs:
 
           tree = ET.ElementTree(ana_tv)
           tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"TV+ OZET -> Toplam kanal: {len(aktif_kanallar)} | Toplam program: {len(program_elemanlari)}")
+          print(f"OZET -> Toplam kanal: {len(aktif_kanallar)} | Toplam program: {len(program_elemanlari)}")
           EOF
 
       - name: Gist Guncelle
