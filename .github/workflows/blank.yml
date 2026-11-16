@@ -47,10 +47,21 @@ jobs:
           print("Taranacak yerli kanal kaydi:", len(out))
           PY
 
-          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=8000 >/dev/null 2>&1 || true
+          echo "=== GRAB BASLIYOR ==="
+          npm run grab -- \
+            --channels=filtre.xml \
+            --output=../ham_guide.xml \
+            --days=2 \
+            --maxConnections=10 \
+            --timeout=20000 2>&1 | grep -Ev "^\s*$" | tail -60 || true
 
-          if [ ! -s ../ham_guide.xml ]; then
-            echo "HATA: ham_guide.xml olusturulamadi veya bos."
+          echo "=== GRAB BITTI ==="
+          if [ -s ../ham_guide.xml ]; then
+            HAM_CH=$(grep -o '<channel ' ../ham_guide.xml | wc -l)
+            HAM_PR=$(grep -o '<programme ' ../ham_guide.xml | wc -l)
+            echo "ham_guide.xml -> $HAM_CH kanal, $HAM_PR program"
+          else
+            echo "HATA: ham_guide.xml bos veya yok"
             exit 1
           fi
 
@@ -58,9 +69,8 @@ jobs:
         run: |
           python3 <<'PY'
           import re, xml.etree.ElementTree as ET
-          from datetime import datetime, timedelta
 
-          # Kanal adi -> (M3U uyumlu tvg-id, TiviMate'de gorunecek ad)
+          # kanal_anahtar -> (tvg-id, gorunen ad)
           ADLAR = {
               "trt1": ("TRT1.tr", "TRT 1"),
               "trt2": ("TRT2.tr", "TRT 2"),
@@ -178,51 +188,64 @@ jobs:
               return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
 
           def norm(m):
-              s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
+              s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
 
           def saat_ekle(z):
-              """XMLTV'de saat dilimi yoksa UTC oldugu varsayilir.
-              Turkiye icin acikca +0300 ekleyerek karisikligi onle."""
               if not z or len(z) < 14:
                   return z
               if z[14:].strip().startswith(("+", "-")):
-                  return z  # zaten offset var
+                  return z
               return z[:14] + " +0300"
 
-          kok = ET.parse("ham_guide.xml").getroot()
-          harita, sayac, kanallar, eklenen, proglar = {}, {}, {}, set(), []
+          # 1) Beklenen tum kanallari filtre.xml'den al
+          #    -> grab sadece 8 kanal ceksе bile 104 kanal XML'de yer alir
+          id_map = {}       # xmltv_id -> tid
+          kanallar = {}     # tid -> gorunen ad
 
-          for ch in kok.findall("channel"):
-              eid = ch.get("id")
-              d = ch.find("display-name")
-              ham = d.text if (d is not None and d.text) else eid
-              n = norm(ham) if ham else ""
+          filtre_kok = ET.parse("filtre.xml").getroot()
+          for ch in filtre_kok.findall("channel"):
+              eid = ch.get("xmltv_id")
+              if not eid:
+                  continue
+              ham = ch.text or ""
+              n = norm(ham)
               if n in ADLAR:
                   tid, gad = ADLAR[n]
-                  harita[eid] = (tid, gad)
+                  id_map[eid] = tid
+                  kanallar[tid] = gad
+
+          print("Beklenen kanal (filtre.xml):", len(kanallar))
+
+          # 2) Programlari ham_guide.xml'den al ve id_map uzerinden esle
+          kok = ET.parse("ham_guide.xml").getroot()
+          proglar = []
+          eklenen = set()
+          programli = set()
 
           for p in kok.findall("programme"):
               eid = p.get("channel")
-              b_el = p.find("title")
-              if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita:
+              tid = id_map.get(eid)
+              if not tid:
                   continue
-              tid, gad = harita[eid]
-              baslik = temiz(b_el.text)
+              b_el = p.find("title")
+              if b_el is None or not b_el.text or not b_el.text.strip():
+                  continue
               st = saat_ekle(p.get("start", ""))
               sp = saat_ekle(p.get("stop", ""))
               if not st or not sp or (tid, st) in eklenen:
                   continue
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
-              ET.SubElement(yp, "title", {"lang": "tr"}).text = baslik
+              ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(b_el.text)
               de = p.find("desc")
               if de is not None and de.text:
                   ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
               proglar.append(yp)
-              kanallar[tid] = gad
+              programli.add(tid)
 
+          # 3) XML'i yaz — TUM kanallar (program olsun veya olmasin)
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
@@ -230,7 +253,13 @@ jobs:
           for yp in proglar:
               tv.append(yp)
           ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print("OZET -> Toplam yedekli kanal: %d | Toplam program: %d" % (len(kanallar), len(proglar)))
+
+          # Tanilama ciktisi
+          programsiz = set(kanallar.keys()) - programli
+          print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
+                % (len(kanallar), len(programli), len(programsiz), len(proglar)))
+          if programsiz:
+              print("Programsiz ilk 15 kanal:", sorted(programsiz)[:15])
           PY
 
       - name: Gist Guncelle
