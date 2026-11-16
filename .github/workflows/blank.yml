@@ -1,4 +1,4 @@
-name: Tam Kapsamli Turkiye EPG (Gist)
+name: TVPlus Tam Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,42 +22,15 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Gercek Veri Veren Kaynaklari Cek
+      - name: TV+ Tum Kanallari Cek
         run: |
           cd epg_tool
-          mkdir -p ../kaynak_ciktilari
-
-          # 1. TV+ (lang filtresi olmadan tum kanallar)
-          if [ -f "sites/tvplus.com.tr/tvplus.com.tr.channels.xml" ]; then
-            cp "sites/tvplus.com.tr/tvplus.com.tr.channels.xml" temp_tvplus.xml
-            npm run grab -- --channels=temp_tvplus.xml --output="../kaynak_ciktilari/tvplus.xml" --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
-            prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/tvplus.xml" 2>/dev/null || echo 0)
-            aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/tvplus.xml" 2>/dev/null | sort -u | wc -l || echo 0)
-            echo "Kaynak: tvplus.com.tr -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
-          fi
-
-          # 2. Yabanci platformlardaki Turk kanallari (blue.ch, melita.com, digitalb.al)
-          for site_adi in blue.ch melita.com digitalb.al; do
-            dosya="sites/${site_adi}/${site_adi}.channels.xml"
-            if [ -f "$dosya" ]; then
-              echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temp_ch.xml
-              grep 'lang="tr"' "$dosya" | grep "<channel " >> temp_ch.xml || true
-              echo '</channels>' >> temp_ch.xml
-
-              kanal_sayisi=$(grep -c '<channel ' temp_ch.xml || true)
-              if [ "$kanal_sayisi" -gt 0 ]; then
-                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
-                prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" 2>/dev/null || echo 0)
-                aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/${site_adi}.xml" 2>/dev/null | sort -u | wc -l || echo 0)
-                echo "Kaynak: ${site_adi} -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
-              fi
-            fi
-          done
+          npm run grab -- --channels="sites/tvplus.com.tr/tvplus.com.tr.channels.xml" --output="../ham_guide.xml" --days=2 --maxConnections=25 --timeout=10000 >/dev/null 2>&1 || true
 
       - name: TiviMate Uyumlu XML Olustur
         run: |
           python3 - << 'EOF'
-          import glob, re, xml.etree.ElementTree as ET
+          import re, xml.etree.ElementTree as ET
 
           def ismi_sadelestir(isim):
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
@@ -73,49 +46,42 @@ jobs:
                   "showmax": "Show Max", "show max": "Show Max",
                   "trt turk": "TRT Türk", "trt türk": "TRT Türk",
                   "power turk": "Power Türk", "power türk": "Power Türk",
-                  "eurostar": "Euro Star", "euro star": "Euro Star",
-                  "tv4": "TV 4", "tv 4": "TV 4",
                   "24": "24 TV", "24 tv": "24 TV"
               }
               return sozluk.get(temiz.lower(), temiz)
 
+          kaynak_root = ET.parse("ham_guide.xml").getroot()
+          id_haritasi = {}
           aktif_kanallar = set()
           eklenen_programlar = set()
           program_elemanlari = []
 
-          for xml_dosya in glob.glob("kaynak_ciktilari/*.xml"):
-              try:
-                  kaynak_root = ET.parse(xml_dosya).getroot()
-                  id_haritasi = {}
+          for ch in kaynak_root.findall("channel"):
+              eski_id = ch.get("id")
+              disp = ch.find("display-name")
+              ham_isim = disp.text if (disp is not None and disp.text) else eski_id
+              if ham_isim:
+                  sade_ad = ismi_sadelestir(ham_isim)
+                  if sade_ad:
+                      id_haritasi[eski_id] = sade_ad
 
-                  for ch in kaynak_root.findall("channel"):
-                      eski_id = ch.get("id")
-                      disp = ch.find("display-name")
-                      ham_isim = disp.text if (disp is not None and disp.text) else eski_id
-                      if ham_isim:
-                          sade_ad = ismi_sadelestir(ham_isim)
-                          if sade_ad:
-                              id_haritasi[eski_id] = sade_ad
+          for prog in kaynak_root.findall("programme"):
+              eski_ch_id = prog.get("channel")
+              if eski_ch_id in id_haritasi:
+                  sade_ad = id_haritasi[eski_ch_id]
+                  baslik_el = prog.find("title")
+                  baslik = baslik_el.text if (baslik_el is not None and baslik_el.text) else ""
+                  if sade_ad == "TV 4" and any(k in baslik for k in ["Policjantki", "Trudne", "Disco", "Telezakupy"]):
+                      continue
+                  baslangic = prog.get("start", "")
+                  anahtar = (sade_ad, baslangic)
+                  if anahtar not in eklenen_programlar:
+                      eklenen_programlar.add(anahtar)
+                      prog.set("channel", sade_ad)
+                      program_elemanlari.append(prog)
+                      aktif_kanallar.add(sade_ad)
 
-                  for prog in kaynak_root.findall("programme"):
-                      eski_ch_id = prog.get("channel")
-                      if eski_ch_id in id_haritasi:
-                          sade_ad = id_haritasi[eski_ch_id]
-                          baslik_el = prog.find("title")
-                          baslik = baslik_el.text if (baslik_el is not None and baslik_el.text) else ""
-                          if sade_ad == "TV 4" and any(k in baslik for k in ["Policjantki", "Trudne", "Disco", "Telezakupy"]):
-                              continue
-                          baslangic = prog.get("start", "")
-                          anahtar = (sade_ad, baslangic)
-                          if anahtar not in eklenen_programlar:
-                              eklenen_programlar.add(anahtar)
-                              prog.set("channel", sade_ad)
-                              program_elemanlari.append(prog)
-                              aktif_kanallar.add(sade_ad)
-              except Exception:
-                  pass
-
-          ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
+          ana_tv = ET.Element("tv", {"generator-info-name": "TVPlus-Turkiye-EPG"})
           for sade_ad in sorted(aktif_kanallar):
               yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
               yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
@@ -126,7 +92,7 @@ jobs:
 
           tree = ET.ElementTree(ana_tv)
           tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"OZET -> Toplam benzersiz kanal: {len(aktif_kanallar)} | Toplam tekil program: {len(program_elemanlari)}")
+          print(f"TV+ OZET -> Toplam kanal: {len(aktif_kanallar)} | Toplam program: {len(program_elemanlari)}")
           EOF
 
       - name: Gist Guncelle
