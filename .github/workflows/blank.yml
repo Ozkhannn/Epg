@@ -16,27 +16,27 @@ jobs:
 
       - name: Kaziyici Hazirla
         run: |
-          DOMAIN="github.com"
-          REPO_PATH="iptv-org/epg.git"
-          git clone --depth 1 --single-branch "https://${DOMAIN}/${REPO_PATH}" epg_tool >/dev/null 2>&1
+          git clone --depth 1 --single-branch "https://github.com/iptv-org/epg.git" epg_tool >/dev/null 2>&1
           cd epg_tool
-          # devDependencies de kurulsun ki prepare/postinstall betikleri sorunsuz calissin
           npm install --no-audit --no-fund --silent >/dev/null 2>&1
 
       - name: Yerli Kanallari Hizli Tara ve Cek
         run: |
           cd epg_tool
-          python3 -c '
+          python3 <<'PY'
           import re, xml.etree.ElementTree as ET
+
           HEDEF = {"trt1","trt2","trthaber","trtspor","trtsporyildiz","trtbelgesel","trtcocuk","trtmuzik","trtturk","trtavaz","trtkurdi","trtworld","kanald","eurod","kanalddrama","atv","atvahaber","a2","showtv","showturk","showmax","startv","eurostar","now","nowtv","fox","foxturk","tv8","tv85","tv8bucuk","kanal7","ulketv","beyaztv","teve2","tv4","360","tlc","dmax","cnbce","ekoltv","beinsports","beinsports1","beinsports2","beinsports3","beinsports4","beinsports5","beinsportsmax1","beinsportsmax2","beinsportshaber","tivibuspor","tivibuspor1","tivibuspor2","tivibuspor3","tivibuspor4","ssport","ssport1","ssport2","smartspor","smartspor1","smartspor2","eurosport1","eurosport2","aspor","htspor","sportstv","fbtv","ntv","cnnturk","haberturk","ahaber","anews","apara","bloomberght","ekoturk","halktv","sozcutv","tele1","krttv","haberglobal","24tv","tgrthaber","tgrteu","tgrtbelgesel","benguturk","tv100","akittv","liderhabertv","flashhaber","tytturk","nationalgeographic","natgeo","natgeowild","discoverychannel","discovery","bbcearth","bbcfirst","history","tarihtv","habitattv","minikago","minikacocuk","cartoonnetwork","disneyjunior","nickjr","nickelodeon","babytv","powerturk","powertv","kralpop","dreamturk","number1turk","number1tv"}
+
           def norm(m):
               s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
-          ALAN_ADLARI = ["tvplus.com.tr", "blue.ch", "digitalb.al", "melita.com", "tivibu.com.tr", "trt.net.tr", "kanald.com.tr", "atv.com.tr", "showtv.com.tr", "star.com.tr", "tv8.com.tr"]
+
+          ALAN_ADLARI = ["tvplus.com.tr","blue.ch","digitalb.al","melita.com","tivibu.com.tr","trt.net.tr","kanald.com.tr","atv.com.tr","showtv.com.tr","star.com.tr","tv8.com.tr"]
           out = ET.Element("channels")
           for alan in ALAN_ADLARI:
-              dosya = f"sites/{alan}/{alan}.channels.xml"
+              dosya = "sites/%s/%s.channels.xml" % (alan, alan)
               try:
                   for ch in ET.parse(dosya).getroot().findall("channel"):
                       if norm(ch.text or "") in HEDEF:
@@ -45,9 +45,10 @@ jobs:
                   pass
           ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
           print("Taranacak yerli kanal kaydi:", len(out))
-          '
+          PY
+
           npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=8000 >/dev/null 2>&1 || true
-          # grab basarisiz olsa bile bos dosya ile devam etmemek icin kontrol
+
           if [ ! -s ../ham_guide.xml ]; then
             echo "HATA: ham_guide.xml olusturulamadi veya bos."
             exit 1
@@ -55,19 +56,22 @@ jobs:
 
       - name: Yedekli TiviMate XML Olustur
         run: |
-          python3 -c '
+          python3 <<'PY'
           import re, xml.etree.ElementTree as ET
-          from datetime import datetime, timedelta
+
           ADLAR = {"trt1":"TRT 1","trt2":"TRT 2","trthaber":"TRT Haber","trtspor":"TRT Spor","trtsporyildiz":"TRT Spor Yıldız","trtbelgesel":"TRT Belgesel","trtcocuk":"TRT Çocuk","trtmuzik":"TRT Müzik","trtturk":"TRT Türk","trtavaz":"TRT Avaz","trtkurdi":"TRT Kurdi","trtworld":"TRT World","kanald":"Kanal D","eurod":"Euro D","kanalddrama":"Kanal D Drama","atv":"ATV","a2":"A2","showtv":"Show TV","showturk":"Show Türk","showmax":"Show Max","startv":"Star TV","eurostar":"Euro Star","now":"NOW","nowtv":"NOW","fox":"NOW","tv8":"TV8","tv85":"TV8,5","tv8bucuk":"TV8,5","kanal7":"Kanal 7","ulketv":"Ülke TV","beyaztv":"Beyaz TV","teve2":"Teve2","tv4":"TV 4","360":"360","tlc":"TLC","dmax":"DMAX","cnbce":"CNBC-e","ekoltv":"Ekol TV","beinsports":"beIN Sports 1","beinsports1":"beIN Sports 1","beinsports2":"beIN Sports 2","beinsports3":"beIN Sports 3","beinsports4":"beIN Sports 4","beinsports5":"beIN Sports 5","beinsportsmax1":"beIN Sports MAX 1","beinsportsmax2":"beIN Sports MAX 2","beinsportshaber":"beIN Sports Haber","tivibuspor":"Tivibu Spor","tivibuspor1":"Tivibu Spor 1","tivibuspor2":"Tivibu Spor 2","tivibuspor3":"Tivibu Spor 3","tivibuspor4":"Tivibu Spor 4","ssport":"S Sport","ssport1":"S Sport 1","ssport2":"S Sport 2","smartspor":"Smart Spor","smartspor1":"Smart Spor 1","smartspor2":"Smart Spor 2","eurosport1":"Eurosport 1","eurosport2":"Eurosport 2","aspor":"A Spor","htspor":"HT Spor","sportstv":"Sports TV","fbtv":"FB TV","ntv":"NTV","cnnturk":"CNN Türk","haberturk":"Habertürk","ahaber":"A Haber","anews":"A News","apara":"A Para","bloomberght":"Bloomberg HT","ekoturk":"Ekotürk","halktv":"Halk TV","sozcutv":"Sözcü TV","tele1":"Tele1","krttv":"KRT TV","haberglobal":"Haber Global","24tv":"24 TV","tgrthaber":"TGRT Haber","tgrteu":"TGRT EU","tgrtbelgesel":"TGRT Belgesel","benguturk":"Bengütürk","tv100":"TV100","akittv":"Akit TV","liderhabertv":"Lider Haber","flashhaber":"Flash Haber","tytturk":"TYT Türk","nationalgeographic":"National Geographic","natgeo":"National Geographic","natgeowild":"Nat Geo Wild","discoverychannel":"Discovery Channel","discovery":"Discovery Channel","bbcearth":"BBC Earth","bbcfirst":"BBC First","history":"History","tarihtv":"Tarih TV","habitattv":"Habitat TV","minikago":"MinikaGO","minikacocuk":"Minika Çocuk","cartoonnetwork":"Cartoon Network","disneyjunior":"Disney Junior","nickjr":"Nick Jr","nickelodeon":"Nickelodeon","babytv":"Baby TV","powerturk":"Power Türk","powertv":"Power TV","kralpop":"Kral Pop","dreamturk":"Dream Türk","number1turk":"Number1 Türk","number1tv":"Number1 TV"}
-          def temiz(s): return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
+
+          def temiz(s):
+              return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
+
           def norm(m):
               s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
-          # NOT: Saat dilimi kaydirma islemi kaldirildi.
-          # iptv-org/epg site config'leri kendi TZ donusumlerini zaten yapar.
+
           kok = ET.parse("ham_guide.xml").getroot()
           harita, sayac, kanallar, eklenen, proglar = {}, {}, {}, set(), []
+
           for ch in kok.findall("channel"):
               eid = ch.get("id")
               d = ch.find("display-name")
@@ -76,33 +80,39 @@ jobs:
               if n in ADLAR:
                   sayac[n] = sayac.get(n, 0) + 1
                   no = sayac[n]
-                  tid = f"{n}{no}"
-                  gad = f"{ADLAR[n]} ({no})" if no > 1 else ADLAR[n]
+                  tid = "%s%d" % (n, no)
+                  gad = "%s (%d)" % (ADLAR[n], no) if no > 1 else ADLAR[n]
                   harita[eid] = (tid, gad)
+
           for p in kok.findall("programme"):
               eid = p.get("channel")
               b_el = p.find("title")
-              if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita: continue
+              if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita:
+                  continue
               tid, gad = harita[eid]
               baslik = temiz(b_el.text)
-              st = p.get("start","")
-              sp = p.get("stop","")
-              if not st or not sp or (tid, st) in eklenen: continue
+              st = p.get("start", "")
+              sp = p.get("stop", "")
+              if not st or not sp or (tid, st) in eklenen:
+                  continue
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
               ET.SubElement(yp, "title", {"lang": "tr"}).text = baslik
               de = p.find("desc")
-              if de is not None and de.text: ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
+              if de is not None and de.text:
+                  ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
               proglar.append(yp)
               kanallar[tid] = gad
+
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
               ET.SubElement(yc, "display-name", {"lang": "tr"}).text = gad
-          for yp in proglar: tv.append(yp)
+          for yp in proglar:
+              tv.append(yp)
           ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"OZET -> Toplam yedekli kanal: {len(kanallar)} | Toplam program: {len(proglar)}")
-          '
+          print("OZET -> Toplam yedekli kanal: %d | Toplam program: %d" % (len(kanallar), len(proglar)))
+          PY
 
       - name: Gist Guncelle
         env:
@@ -110,6 +120,5 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
-          # gh gist edit interaktif editore dusebilir; API ile dosyayi guncelle
           jq -n --rawfile content guide.xml '{files: {"guide.xml": {content: $content}}}' | \
             gh api -X PATCH /gists/"$CLEAN_ID" --input -
