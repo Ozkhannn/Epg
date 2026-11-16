@@ -1,0 +1,86 @@
+name: Otomatik Turkiye EPG
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  epg-uret:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu Cek
+        uses: actions/checkout@v4
+
+      - name: Python Kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: EPG Olustur
+        run: |
+          python3 -c '
+          import urllib.request, gzip, re, xml.etree.ElementTree as ET
+
+          KAYNAKLAR = [
+              "https://epg.pw",
+              "https://epgshare01.online",
+              "https://open-epg.com"
+          ]
+
+          def ismi_sadelestir(isim):
+              temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr)\b", "", isim, flags=re.IGNORECASE)
+              temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
+              return " ".join(temiz.split()).strip()
+
+          ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
+          eklenen_kanallar = {}
+          id_haritasi = {}
+
+          for url in KAYNAKLAR:
+              try:
+                  req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                  with urllib.request.urlopen(req, timeout=30) as res:
+                      veri = gzip.decompress(res.read()) if url.endswith(".gz") else res.read()
+                      kaynak_root = ET.fromstring(veri)
+
+                      for ch in kaynak_root.findall("channel"):
+                          eski_id = ch.get("id")
+                          disp = ch.find("display-name")
+                          ham_isim = disp.text if (disp is not None and disp.text) else eski_id
+                          if not ham_isim:
+                              continue
+                          sade_ad = ismi_sadelestir(ham_isim)
+                          if not sade_ad:
+                              continue
+                          id_haritasi[eski_id] = sade_ad
+                          if sade_ad not in eklenen_kanallar:
+                              yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
+                              yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
+                              yeni_disp.text = sade_ad
+                              eklenen_kanallar[sade_ad] = True
+
+                      for prog in kaynak_root.findall("programme"):
+                          eski_ch_id = prog.get("channel")
+                          if eski_ch_id in id_haritasi:
+                              prog.set("channel", id_haritasi[eski_ch_id])
+                              ana_tv.append(prog)
+                  print(f"Islendi: {url}")
+              except Exception as e:
+                  print(f"Hata ({url}): {e}")
+
+          tree = ET.ElementTree(ana_tv)
+          tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
+          print(f"Toplam {len(eklenen_kanallar)} sade kanal olusturuldu!")
+          '
+
+      - name: Guide XML Kaydet
+        run: |
+          git config --global user.name "EPG Bot"
+          git config --global user.email "bot@://github.com"
+          git add guide.xml
+          git commit -m "EPG guncellendi" || exit 0
+          git push
