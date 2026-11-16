@@ -32,23 +32,12 @@ jobs:
               s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
-          SITELER = [
-              "sites/tvplus.com.tr/tvplus.com.tr.channels.xml",
-              "sites/blue.ch/blue.ch.channels.xml",
-              "sites/digitalb.al/digitalb.al.channels.xml",
-              "sites/://melita.com",
-              "sites/tivibu.com.tr/tivibu.com.tr.channels.xml",
-              "sites/trt.net.tr/trt.net.tr.channels.xml",
-              "sites/kanald.com.tr/kanald.com.tr.channels.xml",
-              "sites/atv.com.tr/atv.com.tr.channels.xml",
-              "sites/showtv.com.tr/showtv.com.tr.channels.xml",
-              "sites/star.com.tr/star.com.tr.channels.xml",
-              "sites/tv8.com.tr/tv8.com.tr.channels.xml"
-          ]
+          ALAN_ADLARI = ["tvplus.com.tr", "blue.ch", "digitalb.al", "melita.com", "tivibu.com.tr", "trt.net.tr", "kanald.com.tr", "atv.com.tr", "showtv.com.tr", "star.com.tr", "tv8.com.tr"]
           out = ET.Element("channels")
-          for d in SITELER:
+          for alan in ALAN_ADLARI:
+              dosya = f"sites/{alan}/{alan}.channels.xml"
               try:
-                  for ch in ET.parse(d).getroot().findall("channel"):
+                  for ch in ET.parse(dosya).getroot().findall("channel"):
                       if norm(ch.text or "") in HEDEF:
                           out.append(ch)
               except Exception:
@@ -56,7 +45,7 @@ jobs:
           ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
           print("Taranacak yerli kanal kaydi:", len(out))
           '
-          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=6000 >/dev/null 2>&1 || true
+          npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=30 --timeout=8000 >/dev/null 2>&1 || true
 
       - name: Yedekli TiviMate XML Olustur
         run: |
