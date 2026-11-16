@@ -58,8 +58,121 @@ jobs:
         run: |
           python3 <<'PY'
           import re, xml.etree.ElementTree as ET
+          from datetime import datetime, timedelta
 
-          ADLAR = {"trt1":"TRT 1","trt2":"TRT 2","trthaber":"TRT Haber","trtspor":"TRT Spor","trtsporyildiz":"TRT Spor Yıldız","trtbelgesel":"TRT Belgesel","trtcocuk":"TRT Çocuk","trtmuzik":"TRT Müzik","trtturk":"TRT Türk","trtavaz":"TRT Avaz","trtkurdi":"TRT Kurdi","trtworld":"TRT World","kanald":"Kanal D","eurod":"Euro D","kanalddrama":"Kanal D Drama","atv":"ATV","a2":"A2","showtv":"Show TV","showturk":"Show Türk","showmax":"Show Max","startv":"Star TV","eurostar":"Euro Star","now":"NOW","nowtv":"NOW","fox":"NOW","tv8":"TV8","tv85":"TV8,5","tv8bucuk":"TV8,5","kanal7":"Kanal 7","ulketv":"Ülke TV","beyaztv":"Beyaz TV","teve2":"Teve2","tv4":"TV 4","360":"360","tlc":"TLC","dmax":"DMAX","cnbce":"CNBC-e","ekoltv":"Ekol TV","beinsports":"beIN Sports 1","beinsports1":"beIN Sports 1","beinsports2":"beIN Sports 2","beinsports3":"beIN Sports 3","beinsports4":"beIN Sports 4","beinsports5":"beIN Sports 5","beinsportsmax1":"beIN Sports MAX 1","beinsportsmax2":"beIN Sports MAX 2","beinsportshaber":"beIN Sports Haber","tivibuspor":"Tivibu Spor","tivibuspor1":"Tivibu Spor 1","tivibuspor2":"Tivibu Spor 2","tivibuspor3":"Tivibu Spor 3","tivibuspor4":"Tivibu Spor 4","ssport":"S Sport","ssport1":"S Sport 1","ssport2":"S Sport 2","smartspor":"Smart Spor","smartspor1":"Smart Spor 1","smartspor2":"Smart Spor 2","eurosport1":"Eurosport 1","eurosport2":"Eurosport 2","aspor":"A Spor","htspor":"HT Spor","sportstv":"Sports TV","fbtv":"FB TV","ntv":"NTV","cnnturk":"CNN Türk","haberturk":"Habertürk","ahaber":"A Haber","anews":"A News","apara":"A Para","bloomberght":"Bloomberg HT","ekoturk":"Ekotürk","halktv":"Halk TV","sozcutv":"Sözcü TV","tele1":"Tele1","krttv":"KRT TV","haberglobal":"Haber Global","24tv":"24 TV","tgrthaber":"TGRT Haber","tgrteu":"TGRT EU","tgrtbelgesel":"TGRT Belgesel","benguturk":"Bengütürk","tv100":"TV100","akittv":"Akit TV","liderhabertv":"Lider Haber","flashhaber":"Flash Haber","tytturk":"TYT Türk","nationalgeographic":"National Geographic","natgeo":"National Geographic","natgeowild":"Nat Geo Wild","discoverychannel":"Discovery Channel","discovery":"Discovery Channel","bbcearth":"BBC Earth","bbcfirst":"BBC First","history":"History","tarihtv":"Tarih TV","habitattv":"Habitat TV","minikago":"MinikaGO","minikacocuk":"Minika Çocuk","cartoonnetwork":"Cartoon Network","disneyjunior":"Disney Junior","nickjr":"Nick Jr","nickelodeon":"Nickelodeon","babytv":"Baby TV","powerturk":"Power Türk","powertv":"Power TV","kralpop":"Kral Pop","dreamturk":"Dream Türk","number1turk":"Number1 Türk","number1tv":"Number1 TV"}
+          # Kanal adi -> (M3U uyumlu tvg-id, TiviMate'de gorunecek ad)
+          ADLAR = {
+              "trt1": ("TRT1.tr", "TRT 1"),
+              "trt2": ("TRT2.tr", "TRT 2"),
+              "trthaber": ("TRTHaber.tr", "TRT Haber"),
+              "trtspor": ("TRTSpor.tr", "TRT Spor"),
+              "trtsporyildiz": ("TRTSporYildiz.tr", "TRT Spor Yıldız"),
+              "trtbelgesel": ("TRTBelgesel.tr", "TRT Belgesel"),
+              "trtcocuk": ("TRTCocuk.tr", "TRT Çocuk"),
+              "trtmuzik": ("TRTMuzik.tr", "TRT Müzik"),
+              "trtturk": ("TRTTurk.tr", "TRT Türk"),
+              "trtavaz": ("TRTAvaz.tr", "TRT Avaz"),
+              "trtkurdi": ("TRTKurdi.tr", "TRT Kurdi"),
+              "trtworld": ("TRTWorld.tr", "TRT World"),
+              "kanald": ("KanalD.tr", "Kanal D"),
+              "eurod": ("EuroD.tr", "Euro D"),
+              "kanalddrama": ("KanalDDrama.tr", "Kanal D Drama"),
+              "atv": ("ATV.tr", "ATV"),
+              "a2": ("A2.tr", "A2"),
+              "showtv": ("ShowTV.tr", "Show TV"),
+              "showturk": ("ShowTurk.tr", "Show Türk"),
+              "showmax": ("ShowMax.tr", "Show Max"),
+              "startv": ("StarTV.tr", "Star TV"),
+              "eurostar": ("EuroStar.tr", "Euro Star"),
+              "now": ("NOW.tr", "NOW"),
+              "nowtv": ("NOW.tr", "NOW"),
+              "fox": ("NOW.tr", "NOW"),
+              "tv8": ("TV8.tr", "TV8"),
+              "tv85": ("TV85.tr", "TV8,5"),
+              "tv8bucuk": ("TV85.tr", "TV8,5"),
+              "kanal7": ("Kanal7.tr", "Kanal 7"),
+              "ulketv": ("UlkeTV.tr", "Ülke TV"),
+              "beyaztv": ("BeyazTV.tr", "Beyaz TV"),
+              "teve2": ("Teve2.tr", "Teve2"),
+              "tv4": ("TV4.tr", "TV 4"),
+              "360": ("360.tr", "360"),
+              "tlc": ("TLC.tr", "TLC"),
+              "dmax": ("DMAX.tr", "DMAX"),
+              "cnbce": ("CNBCe.tr", "CNBC-e"),
+              "ekoltv": ("EkolTV.tr", "Ekol TV"),
+              "beinsports": ("beINSports1.tr", "beIN Sports 1"),
+              "beinsports1": ("beINSports1.tr", "beIN Sports 1"),
+              "beinsports2": ("beINSports2.tr", "beIN Sports 2"),
+              "beinsports3": ("beINSports3.tr", "beIN Sports 3"),
+              "beinsports4": ("beINSports4.tr", "beIN Sports 4"),
+              "beinsports5": ("beINSports5.tr", "beIN Sports 5"),
+              "beinsportsmax1": ("beINSportsMAX1.tr", "beIN Sports MAX 1"),
+              "beinsportsmax2": ("beINSportsMAX2.tr", "beIN Sports MAX 2"),
+              "beinsportshaber": ("beINSportsHaber.tr", "beIN Sports Haber"),
+              "tivibuspor": ("TivibuSpor.tr", "Tivibu Spor"),
+              "tivibuspor1": ("TivibuSpor1.tr", "Tivibu Spor 1"),
+              "tivibuspor2": ("TivibuSpor2.tr", "Tivibu Spor 2"),
+              "tivibuspor3": ("TivibuSpor3.tr", "Tivibu Spor 3"),
+              "tivibuspor4": ("TivibuSpor4.tr", "Tivibu Spor 4"),
+              "ssport": ("SSport.tr", "S Sport"),
+              "ssport1": ("SSport1.tr", "S Sport 1"),
+              "ssport2": ("SSport2.tr", "S Sport 2"),
+              "smartspor": ("SmartSpor.tr", "Smart Spor"),
+              "smartspor1": ("SmartSpor1.tr", "Smart Spor 1"),
+              "smartspor2": ("SmartSpor2.tr", "Smart Spor 2"),
+              "eurosport1": ("Eurosport1.tr", "Eurosport 1"),
+              "eurosport2": ("Eurosport2.tr", "Eurosport 2"),
+              "aspor": ("ASpor.tr", "A Spor"),
+              "htspor": ("HTSpor.tr", "HT Spor"),
+              "sportstv": ("SportsTV.tr", "Sports TV"),
+              "fbtv": ("FBTV.tr", "FB TV"),
+              "ntv": ("NTV.tr", "NTV"),
+              "cnnturk": ("CNNTurk.tr", "CNN Türk"),
+              "haberturk": ("Haberturk.tr", "Habertürk"),
+              "ahaber": ("AHaber.tr", "A Haber"),
+              "anews": ("ANews.tr", "A News"),
+              "apara": ("APara.tr", "A Para"),
+              "bloomberght": ("BloombergHT.tr", "Bloomberg HT"),
+              "ekoturk": ("Ekoturk.tr", "Ekotürk"),
+              "halktv": ("HalkTV.tr", "Halk TV"),
+              "sozcutv": ("SozcuTV.tr", "Sözcü TV"),
+              "tele1": ("Tele1.tr", "Tele1"),
+              "krttv": ("KRTTV.tr", "KRT TV"),
+              "haberglobal": ("HaberGlobal.tr", "Haber Global"),
+              "24tv": ("24TV.tr", "24 TV"),
+              "tgrthaber": ("TGRTHaber.tr", "TGRT Haber"),
+              "tgrteu": ("TGRTEU.tr", "TGRT EU"),
+              "tgrtbelgesel": ("TGRTBelgesel.tr", "TGRT Belgesel"),
+              "benguturk": ("Benguturk.tr", "Bengütürk"),
+              "tv100": ("TV100.tr", "TV100"),
+              "akittv": ("AkitTV.tr", "Akit TV"),
+              "liderhabertv": ("LiderHaber.tr", "Lider Haber"),
+              "flashhaber": ("FlashHaber.tr", "Flash Haber"),
+              "tytturk": ("TYTTurk.tr", "TYT Türk"),
+              "nationalgeographic": ("NationalGeographic.tr", "National Geographic"),
+              "natgeo": ("NationalGeographic.tr", "National Geographic"),
+              "natgeowild": ("NatGeoWild.tr", "Nat Geo Wild"),
+              "discoverychannel": ("DiscoveryChannel.tr", "Discovery Channel"),
+              "discovery": ("DiscoveryChannel.tr", "Discovery Channel"),
+              "bbcearth": ("BBCEarth.tr", "BBC Earth"),
+              "bbcfirst": ("BBCFirst.tr", "BBC First"),
+              "history": ("History.tr", "History"),
+              "tarihtv": ("TarihTV.tr", "Tarih TV"),
+              "habitattv": ("HabitatTV.tr", "Habitat TV"),
+              "minikago": ("MinikaGO.tr", "MinikaGO"),
+              "minikacocuk": ("MinikaCocuk.tr", "Minika Çocuk"),
+              "cartoonnetwork": ("CartoonNetwork.tr", "Cartoon Network"),
+              "disneyjunior": ("DisneyJunior.tr", "Disney Junior"),
+              "nickjr": ("NickJr.tr", "Nick Jr"),
+              "nickelodeon": ("Nickelodeon.tr", "Nickelodeon"),
+              "babytv": ("BabyTV.tr", "Baby TV"),
+              "powerturk": ("PowerTurk.tr", "Power Türk"),
+              "powertv": ("PowerTV.tr", "Power TV"),
+              "kralpop": ("KralPop.tr", "Kral Pop"),
+              "dreamturk": ("DreamTurk.tr", "Dream Türk"),
+              "number1turk": ("Number1Turk.tr", "Number1 Türk"),
+              "number1tv": ("Number1TV.tr", "Number1 TV"),
+          }
 
           def temiz(s):
               return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
@@ -68,6 +181,15 @@ jobs:
               s = m.translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
+
+          def saat_ekle(z):
+              """XMLTV'de saat dilimi yoksa UTC oldugu varsayilir.
+              Turkiye icin acikca +0300 ekleyerek karisikligi onle."""
+              if not z or len(z) < 14:
+                  return z
+              if z[14:].strip().startswith(("+", "-")):
+                  return z  # zaten offset var
+              return z[:14] + " +0300"
 
           kok = ET.parse("ham_guide.xml").getroot()
           harita, sayac, kanallar, eklenen, proglar = {}, {}, {}, set(), []
@@ -78,10 +200,7 @@ jobs:
               ham = d.text if (d is not None and d.text) else eid
               n = norm(ham) if ham else ""
               if n in ADLAR:
-                  sayac[n] = sayac.get(n, 0) + 1
-                  no = sayac[n]
-                  tid = "%s%d" % (n, no)
-                  gad = "%s (%d)" % (ADLAR[n], no) if no > 1 else ADLAR[n]
+                  tid, gad = ADLAR[n]
                   harita[eid] = (tid, gad)
 
           for p in kok.findall("programme"):
@@ -91,8 +210,8 @@ jobs:
                   continue
               tid, gad = harita[eid]
               baslik = temiz(b_el.text)
-              st = p.get("start", "")
-              sp = p.get("stop", "")
+              st = saat_ekle(p.get("start", ""))
+              sp = saat_ekle(p.get("stop", ""))
               if not st or not sp or (tid, st) in eklenen:
                   continue
               eklenen.add((tid, st))
