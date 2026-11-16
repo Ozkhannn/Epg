@@ -30,7 +30,7 @@ jobs:
           echo '</channels>' >> temiz_kanallar.xml
           npm run grab -- --channels=temiz_kanallar.xml --output=../ham_guide.xml --days=2 --maxConnections=20 --timeout=12000 >/dev/null 2>&1 || true
 
-      - name: TiviMate ASCII ID ve Sade Isim Olustur
+      - name: TiviMate Temiz XML Olustur
         run: |
           python3 - << 'EOF'
           import re, xml.etree.ElementTree as ET
@@ -73,20 +73,27 @@ jobs:
               "24": "24 TV", "24 tv": "24 TV"
           }
 
+          def metin_temizle(s):
+              if not s:
+                  return ""
+              # TiviMate XML ayristiricisini bozan kontrol karakterlerini sil
+              return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s).strip()
+
           def ascii_id_yap(ad):
               tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
               temiz = ad.translate(tr_map).lower()
               return re.sub(r"[^a-z0-9]", "", temiz)
 
           def ismi_sadelestir(isim):
+              isim = metin_temizle(isim)
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
-              temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
+              temiz = re.sub(r"[\(\)\[\]\.\-_&]", " ", temiz)
               temiz = " ".join(temiz.split()).strip()
               return SOZLUK.get(temiz.lower(), temiz)
 
           kaynak_root = ET.parse("ham_guide.xml").getroot()
           id_haritasi = {}
-          aktif_kanallar = {}  # ascii_id -> gorunen_isim
+          aktif_kanallar = {}
           eklenen_programlar = set()
           program_elemanlari = []
 
@@ -102,7 +109,6 @@ jobs:
           for prog in kaynak_root.findall("programme"):
               eski_ch_id = prog.get("channel")
               baslik_el = prog.find("title")
-              # Bos/basliksiz program etiketlerini atla
               if baslik_el is None or not baslik_el.text or not baslik_el.text.strip():
                   continue
               if eski_ch_id in id_haritasi:
@@ -111,11 +117,22 @@ jobs:
                   if not temiz_id:
                       continue
                   baslangic = prog.get("start", "")
+                  bitis = prog.get("stop", "")
+                  if not baslangic or not bitis:
+                      continue
                   anahtar = (temiz_id, baslangic)
                   if anahtar not in eklenen_programlar:
                       eklenen_programlar.add(anahtar)
-                      prog.set("channel", temiz_id)
-                      program_elemanlari.append(prog)
+                      yeni_prog = ET.Element("programme", {
+                          "start": baslangic,
+                          "stop": bitis,
+                          "channel": temiz_id
+                      })
+                      ET.SubElement(yeni_prog, "title", {"lang": "tr"}).text = metin_temizle(baslik_el.text)
+                      desc_el = prog.find("desc")
+                      if desc_el is not None and desc_el.text:
+                          ET.SubElement(yeni_prog, "desc", {"lang": "tr"}).text = metin_temizle(desc_el.text)
+                      program_elemanlari.append(yeni_prog)
                       aktif_kanallar[temiz_id] = sade_ad
 
           ana_tv = ET.Element("tv", {"generator-info-name": "TiviMate-Turkiye-EPG"})
