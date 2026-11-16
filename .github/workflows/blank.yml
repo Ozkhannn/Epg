@@ -1,29 +1,26 @@
-name: Otomatik Turkiye EPG
+name: Otomatik Gist Turkiye EPG
 
 on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   epg-uret:
     runs-on: ubuntu-latest
     steps:
-      - name: Depoyu Cek
-        uses: actions/checkout@v4
-
       - name: Python Kur
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: EPG Olustur
+      - name: EPG Olustur ve Gist Guncelle
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           python3 -c '
-          import urllib.request, gzip, re, xml.etree.ElementTree as ET
+          import os, json, urllib.request, gzip, re, xml.etree.ElementTree as ET
 
           KAYNAKLAR = [
               "https://epg.pw",
@@ -72,15 +69,16 @@ jobs:
               except Exception as e:
                   print(f"Hata ({url}): {e}")
 
-          tree = ET.ElementTree(ana_tv)
-          tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"Toplam {len(eklenen_kanallar)} sade kanal olusturuldu!")
-          '
+          xml_icerik = ET.tostring(ana_tv, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
-      - name: Guide XML Kaydet
-        run: |
-          git config --global user.name "EPG Bot"
-          git config --global user.email "bot@://github.com"
-          git add guide.xml
-          git commit -m "EPG guncellendi" || exit 0
-          git push
+          gist_url = f"https://github.com{os.environ[\"GIST_ID\"]}"
+          payload = json.dumps({"files": {"guide.xml": {"content": xml_icerik}}}).encode("utf-8")
+          gist_req = urllib.request.Request(gist_url, data=payload, method="PATCH", headers={
+              "Authorization": f"token {os.environ[\"GIST_TOKEN\"]}",
+              "Accept": "application/vnd.github.v3+json",
+              "Content-Type": "application/json",
+              "User-Agent": "EPG-Gist-Updater"
+          })
+          with urllib.request.urlopen(gist_req, timeout=30) as resp:
+              print("Gist guncellendi! Durum:", resp.status)
+          '
