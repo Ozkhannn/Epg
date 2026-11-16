@@ -1,4 +1,4 @@
-name: Ultra Hizli Turkiye EPG (Gist)
+name: Hizli ve Tam Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,13 +22,13 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Hizli Yerli Kaynaklari Cek
+      - name: Calisan Turkiye Kaynaklarini Cek
         run: |
           cd epg_tool
           mkdir -p ../kaynak_ciktilari
 
-          # Yalnizca hizli calisan Turkiye kaynaklari (yavas ve engelli olanlar cikarildi)
-          SITELER="turksatkablo.com.tr tivibu.com.tr trt.net.tr kanald.com.tr atv.com.tr showtv.com.tr star.com.tr tv8.com.tr"
+          # Onceki calistirmada veri getiren gercek kaynaklar
+          SITELER="tvplus.com.tr tivibu.com.tr digiturk.com.tr dsmart.com.tr trt.net.tr kanald.com.tr showtv.com.tr atv.com.tr star.com.tr tv8.com.tr teleboy.ch"
 
           for site_adi in $SITELER; do
             dosya="sites/${site_adi}/${site_adi}.channels.xml"
@@ -39,7 +39,7 @@ jobs:
 
               kanal_sayisi=$(grep -c '<channel ' temp_ch.xml || true)
               if [ "$kanal_sayisi" -gt 0 ]; then
-                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=20 --timeout=5000 >/dev/null 2>&1 || true
+                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=15 --timeout=12000 >/dev/null 2>&1 || true
                 
                 if [ -f "../kaynak_ciktilari/${site_adi}.xml" ]; then
                   prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" || true)
@@ -58,9 +58,22 @@ jobs:
           import glob, re, xml.etree.ElementTree as ET
 
           def ismi_sadelestir(isim):
-              temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr)\b", "", isim, flags=re.IGNORECASE)
+              temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
               temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
-              return " ".join(temiz.split()).strip()
+              temiz = " ".join(temiz.split()).strip()
+              # Buyuk/kucuk harf ve Turkce karakter farklarini standartlastir (A SPOR / A Spor -> A Spor)
+              sozluk = {
+                  "a spor": "A Spor", "a para": "A Para", "a haber": "A Haber",
+                  "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
+                  "show turk": "Show Türk", "show türk": "Show Türk", "showturk": "Show Türk",
+                  "showmax": "Show Max", "show max": "Show Max",
+                  "trt turk": "TRT Türk", "trt türk": "TRT Türk",
+                  "power turk": "Power Türk", "power türk": "Power Türk",
+                  "eurostar": "Euro Star", "euro star": "Euro Star",
+                  "tv4": "TV 4", "tv 4": "TV 4",
+                  "24": "24 TV", "24 tv": "24 TV"
+              }
+              return sozluk.get(temiz.lower(), temiz)
 
           ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           aktif_kanallar = set()
@@ -85,6 +98,11 @@ jobs:
                       eski_ch_id = prog.get("channel")
                       if eski_ch_id in id_haritasi:
                           sade_ad = id_haritasi[eski_ch_id]
+                          baslik_el = prog.find("title")
+                          baslik = baslik_el.text if (baslik_el is not None and baslik_el.text) else ""
+                          # Lehce (Polonya TV4) icerikleri atla
+                          if sade_ad == "TV 4" and any(k in baslik for k in ["Policjantki", "Trudne", "Disco", "Telezakupy"]):
+                              continue
                           baslangic = prog.get("start", "")
                           anahtar = (sade_ad, baslangic)
                           if anahtar not in eklenen_programlar:
