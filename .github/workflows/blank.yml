@@ -1,4 +1,4 @@
-name: Otomatik Gist Turkiye EPG
+name: Hizli Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -14,63 +14,93 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Turkiye EPG Kaziyiciyi Hazirla
+      - name: Kaziyiciyi Hizli Hazirla
         run: |
           DOMAIN="github.com"
           REPO_PATH="iptv-org/epg.git"
-          git clone --depth 1 "https://${DOMAIN}/${REPO_PATH}" epg_tool
+          git clone --depth 1 --single-branch "https://${DOMAIN}/${REPO_PATH}" epg_tool >/dev/null 2>&1
           cd epg_tool
-          npm install
+          npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Turkiye Kanallarini Cek
+      - name: Kaynak Bazli EPG Cek ve Birlestir
         run: |
           cd epg_tool
-          cat sites/digiturk.com.tr/digiturk.com.tr.channels.xml sites/dsmart.com.tr/dsmart.com.tr.channels.xml | grep -E "<channel|<channels|</channels|<\?xml" > tr_all.xml
-          echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temiz_kanallar.xml
-          grep "<channel " tr_all.xml >> temiz_kanallar.xml || true
-          echo '</channels>' >> temiz_kanallar.xml
-          npm run grab -- --channels=temiz_kanallar.xml --output=../ham_guide.xml --days=2
+          mkdir -p ../kaynak_ciktilari
 
-      - name: Kanal Isimlerini Sadelestir
+          for dosya in sites/*/*.channels.xml; do
+            if grep -q 'lang="tr"' "$dosya"; then
+              site_adi=$(basename "$(dirname "$dosya")")
+              echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temp_ch.xml
+              grep 'lang="tr"' "$dosya" | grep "<channel " >> temp_ch.xml || true
+              echo '</channels>' >> temp_ch.xml
+
+              kanal_sayisi=$(grep -c '<channel ' temp_ch.xml || true)
+              if [ "$kanal_sayisi" -gt 0 ]; then
+                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=15 --timeout=15000 >/dev/null 2>&1 || true
+                
+                if [ -f "../kaynak_ciktilari/${site_adi}.xml" ]; then
+                  prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" || true)
+                  aktif_ch=$(grep -o 'channel="[^"]*"' "../kaynak_ciktilari/${site_adi}.xml" | sort -u | wc -l || true)
+                  echo "Kaynak: ${site_adi} -> ${aktif_ch} kanal, ${prog_sayisi} program geldi."
+                else
+                  echo "Kaynak: ${site_adi} -> 0 kanal, 0 program geldi."
+                fi
+              fi
+            fi
+          done
+
+      - name: Sadelestir ve Tekillestir
         run: |
           python3 - << 'EOF'
-          import re, xml.etree.ElementTree as ET
+          import glob, re, xml.etree.ElementTree as ET
 
           def ismi_sadelestir(isim):
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr)\b", "", isim, flags=re.IGNORECASE)
               temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
               return " ".join(temiz.split()).strip()
 
-          kaynak_root = ET.parse("ham_guide.xml").getroot()
           ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
-          eklenen_kanallar = {}
-          id_haritasi = {}
+          aktif_kanallar = set()
+          eklenen_programlar = set()
+          toplam_program = 0
 
-          for ch in kaynak_root.findall("channel"):
-              eski_id = ch.get("id")
-              disp = ch.find("display-name")
-              ham_isim = disp.text if (disp is not None and disp.text) else eski_id
-              if not ham_isim:
-                  continue
-              sade_ad = ismi_sadelestir(ham_isim)
-              if not sade_ad:
-                  continue
-              id_haritasi[eski_id] = sade_ad
-              if sade_ad not in eklenen_kanallar:
-                  yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
-                  yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
-                  yeni_disp.text = sade_ad
-                  eklenen_kanallar[sade_ad] = True
+          for xml_dosya in glob.glob("kaynak_ciktilari/*.xml"):
+              try:
+                  kaynak_root = ET.parse(xml_dosya).getroot()
+                  id_haritasi = {}
 
-          for prog in kaynak_root.findall("programme"):
-              eski_ch_id = prog.get("channel")
-              if eski_ch_id in id_haritasi:
-                  prog.set("channel", id_haritasi[eski_ch_id])
-                  ana_tv.append(prog)
+                  for ch in kaynak_root.findall("channel"):
+                      eski_id = ch.get("id")
+                      disp = ch.find("display-name")
+                      ham_isim = disp.text if (disp is not None and disp.text) else eski_id
+                      if ham_isim:
+                          sade_ad = ismi_sadelestir(ham_isim)
+                          if sade_ad:
+                              id_haritasi[eski_id] = sade_ad
+
+                  for prog in kaynak_root.findall("programme"):
+                      eski_ch_id = prog.get("channel")
+                      if eski_ch_id in id_haritasi:
+                          sade_ad = id_haritasi[eski_ch_id]
+                          baslangic = prog.get("start", "")
+                          anahtar = (sade_ad, baslangic)
+                          if anahtar not in eklenen_programlar:
+                              eklenen_programlar.add(anahtar)
+                              prog.set("channel", sade_ad)
+                              ana_tv.append(prog)
+                              aktif_kanallar.add(sade_ad)
+                              toplam_program += 1
+              except Exception:
+                  pass
+
+          for sade_ad in sorted(aktif_kanallar):
+              yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
+              yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
+              yeni_disp.text = sade_ad
 
           tree = ET.ElementTree(ana_tv)
           tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print("Toplam sade kanal sayisi:", len(eklenen_kanallar))
+          print(f"OZET -> Toplam benzersiz kanal: {len(aktif_kanallar)} | Toplam tekil program: {toplam_program}")
           EOF
 
       - name: Gist Guncelle
