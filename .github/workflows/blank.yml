@@ -1,4 +1,4 @@
-name: Sadece Yerli Kanal Listesi EPG (Gist)
+name: Yedekli Coklu Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Yerli Kanal Listesine Gore Cek
+      - name: Yerli Kanallari Tara ve Cek
         run: |
           cd epg_tool
           python3 -c '
@@ -34,6 +34,7 @@ jobs:
               return re.sub(r"[^a-z0-9]", "", s)
           out = ET.Element("channels")
           for d in glob.glob("sites/*/*.channels.xml"):
+              if any(x in d for x in ["digiturk.com.tr", "dsmart.com.tr", "vodafone.com.tr"]): continue
               try:
                   for ch in ET.parse(d).getroot().findall("channel"):
                       if norm(ch.text or "") in HEDEF:
@@ -41,11 +42,11 @@ jobs:
               except Exception:
                   pass
           ET.ElementTree(out).write("filtre.xml", encoding="utf-8", xml_declaration=True)
-          print("Listeden eslesen kanal kaydi:", len(out))
+          print("Taranan toplam kanal kaydi:", len(out))
           '
           npm run grab -- --channels=filtre.xml --output=../ham_guide.xml --days=2 --maxConnections=25 --timeout=10000 >/dev/null 2>&1 || true
 
-      - name: TiviMate XML Olustur
+      - name: Yedekli TiviMate XML Olustur
         run: |
           python3 -c '
           import re, xml.etree.ElementTree as ET
@@ -61,19 +62,24 @@ jobs:
               try: return (datetime.strptime(z[:14], "%Y%m%d%H%M%S") + timedelta(hours=f)).strftime("%Y%m%d%H%M%S") + z[14:]
               except Exception: return z
           kok = ET.parse("ham_guide.xml").getroot()
-          harita, kanallar, eklenen, proglar = {}, {}, set(), []
+          harita, sayac, kanallar, eklenen, proglar = {}, {}, {}, set(), []
           for ch in kok.findall("channel"):
               eid = ch.get("id")
               d = ch.find("display-name")
               ham = d.text if (d is not None and d.text) else eid
-              if ham and norm(ham) in ADLAR: harita[eid] = (norm(ham), ADLAR[norm(ham)])
+              n = norm(ham) if ham else ""
+              if n in ADLAR:
+                  sayac[n] = sayac.get(n, 0) + 1
+                  no = sayac[n]
+                  tid = f"{n}{no}"
+                  gad = f"{ADLAR[n]} ({no})" if no > 1 else ADLAR[n]
+                  harita[eid] = (tid, gad)
           for p in kok.findall("programme"):
               eid = p.get("channel")
               b_el = p.find("title")
               if b_el is None or not b_el.text or not b_el.text.strip() or eid not in harita: continue
               tid, gad = harita[eid]
               baslik = temiz(b_el.text)
-              if tid == "tv4" and any(k in baslik for k in ["Policjantki","Trudne","Disco","Telezakupy"]): continue
               ic = p.find("icon")
               im = p.find("image")
               k_url = (ic.get("src","") if ic is not None else "") + (im.text if (im is not None and im.text) else "")
@@ -87,13 +93,13 @@ jobs:
               if de is not None and de.text: ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
               proglar.append(yp)
               kanallar[tid] = gad
-          tv = ET.Element("tv", {"generator-info-name": "TiviMate-Turkiye-EPG"})
-          for tid, gad in sorted(kanallar.items()):
+          tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
+          for tid, gad in sorted(kanallar.items(), key=lambda x: x):
               yc = ET.SubElement(tv, "channel", {"id": tid})
               ET.SubElement(yc, "display-name", {"lang": "tr"}).text = gad
           for yp in proglar: tv.append(yp)
           ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"OZET -> Kanal: {len(kanallar)} | Program: {len(proglar)}")
+          print(f"OZET -> Toplam yedekli kanal: {len(kanallar)} | Toplam program: {len(proglar)}")
           '
 
       - name: Gist Guncelle
