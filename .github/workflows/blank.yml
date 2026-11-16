@@ -1,4 +1,4 @@
-name: Hizli Turkiye EPG (Gist)
+name: Ultra Hizli Turkiye EPG (Gist)
 
 on:
   schedule:
@@ -22,21 +22,24 @@ jobs:
           cd epg_tool
           npm install --omit=dev --no-audit --no-fund --silent >/dev/null 2>&1
 
-      - name: Kaynak Bazli EPG Cek ve Birlestir
+      - name: Hizli Yerli Kaynaklari Cek
         run: |
           cd epg_tool
           mkdir -p ../kaynak_ciktilari
 
-          for dosya in sites/*/*.channels.xml; do
-            if grep -q 'lang="tr"' "$dosya"; then
-              site_adi=$(basename "$(dirname "$dosya")")
+          # Yalnizca hizli calisan Turkiye kaynaklari (yavas ve engelli olanlar cikarildi)
+          SITELER="turksatkablo.com.tr tivibu.com.tr trt.net.tr kanald.com.tr atv.com.tr showtv.com.tr star.com.tr tv8.com.tr"
+
+          for site_adi in $SITELER; do
+            dosya="sites/${site_adi}/${site_adi}.channels.xml"
+            if [ -f "$dosya" ]; then
               echo '<?xml version="1.0" encoding="UTF-8"?><channels>' > temp_ch.xml
               grep 'lang="tr"' "$dosya" | grep "<channel " >> temp_ch.xml || true
               echo '</channels>' >> temp_ch.xml
 
               kanal_sayisi=$(grep -c '<channel ' temp_ch.xml || true)
               if [ "$kanal_sayisi" -gt 0 ]; then
-                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=15 --timeout=15000 >/dev/null 2>&1 || true
+                npm run grab -- --channels=temp_ch.xml --output="../kaynak_ciktilari/${site_adi}.xml" --days=2 --maxConnections=20 --timeout=5000 >/dev/null 2>&1 || true
                 
                 if [ -f "../kaynak_ciktilari/${site_adi}.xml" ]; then
                   prog_sayisi=$(grep -c '<programme ' "../kaynak_ciktilari/${site_adi}.xml" || true)
