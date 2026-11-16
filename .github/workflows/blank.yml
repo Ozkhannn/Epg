@@ -9,14 +9,16 @@ jobs:
   epg-uret:
     runs-on: ubuntu-latest
     steps:
-      - name: Node.js ve Python Kur
+      - name: Node.js Kur
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Turkiye EPG Kaziyiciyi Hazirla
         run: |
-          git clone --depth 1 https://github.com epg_tool
+          DOMAIN="github.com"
+          REPO_PATH="iptv-org/epg.git"
+          git clone --depth 1 "https://${DOMAIN}/${REPO_PATH}" epg_tool
           cd epg_tool
           npm install
 
