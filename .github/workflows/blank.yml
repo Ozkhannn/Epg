@@ -27,7 +27,6 @@ jobs:
           cd epg_tool
           mkdir -p ../kaynak_ciktilari
 
-          # Onceki calistirmada veri getiren gercek kaynaklar
           SITELER="tvplus.com.tr tivibu.com.tr digiturk.com.tr dsmart.com.tr trt.net.tr kanald.com.tr showtv.com.tr atv.com.tr star.com.tr tv8.com.tr teleboy.ch"
 
           for site_adi in $SITELER; do
@@ -52,7 +51,7 @@ jobs:
             fi
           done
 
-      - name: Sadelestir ve Tekillestir
+      - name: TiviMate Uyumlu XML Olustur
         run: |
           python3 - << 'EOF'
           import glob, re, xml.etree.ElementTree as ET
@@ -61,7 +60,6 @@ jobs:
               temiz = re.sub(r"\b(HD|FHD|UHD|4K|SD|HEVC|H265|RAW|TR|TURKEY|TV\+|\.tr|Int'l|Int)\b", "", isim, flags=re.IGNORECASE)
               temiz = re.sub(r"[\(\)\[\]\.\-_]", " ", temiz)
               temiz = " ".join(temiz.split()).strip()
-              # Buyuk/kucuk harf ve Turkce karakter farklarini standartlastir (A SPOR / A Spor -> A Spor)
               sozluk = {
                   "a spor": "A Spor", "a para": "A Para", "a haber": "A Haber",
                   "haberturk": "Habertürk", "haber turk": "Habertürk", "haber türk": "Habertürk",
@@ -75,10 +73,9 @@ jobs:
               }
               return sozluk.get(temiz.lower(), temiz)
 
-          ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           aktif_kanallar = set()
           eklenen_programlar = set()
-          toplam_program = 0
+          program_elemanlari = []
 
           for xml_dosya in glob.glob("kaynak_ciktilari/*.xml"):
               try:
@@ -100,7 +97,6 @@ jobs:
                           sade_ad = id_haritasi[eski_ch_id]
                           baslik_el = prog.find("title")
                           baslik = baslik_el.text if (baslik_el is not None and baslik_el.text) else ""
-                          # Lehce (Polonya TV4) icerikleri atla
                           if sade_ad == "TV 4" and any(k in baslik for k in ["Policjantki", "Trudne", "Disco", "Telezakupy"]):
                               continue
                           baslangic = prog.get("start", "")
@@ -108,20 +104,24 @@ jobs:
                           if anahtar not in eklenen_programlar:
                               eklenen_programlar.add(anahtar)
                               prog.set("channel", sade_ad)
-                              ana_tv.append(prog)
+                              program_elemanlari.append(prog)
                               aktif_kanallar.add(sade_ad)
-                              toplam_program += 1
               except Exception:
                   pass
 
+          # TiviMate standartlarina uygun olarak ONCE <channel>, SONRA <programme> eklenir
+          ana_tv = ET.Element("tv", {"generator-info-name": "Sade-Turkiye-EPG"})
           for sade_ad in sorted(aktif_kanallar):
               yeni_ch = ET.SubElement(ana_tv, "channel", {"id": sade_ad})
               yeni_disp = ET.SubElement(yeni_ch, "display-name", {"lang": "tr"})
               yeni_disp.text = sade_ad
 
+          for prog in program_elemanlari:
+              ana_tv.append(prog)
+
           tree = ET.ElementTree(ana_tv)
           tree.write("guide.xml", encoding="utf-8", xml_declaration=True)
-          print(f"OZET -> Toplam benzersiz kanal: {len(aktif_kanallar)} | Toplam tekil program: {toplam_program}")
+          print(f"OZET -> Toplam benzersiz kanal: {len(aktif_kanallar)} | Toplam tekil program: {len(program_elemanlari)}")
           EOF
 
       - name: Gist Guncelle
