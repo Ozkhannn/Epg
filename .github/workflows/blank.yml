@@ -19,7 +19,7 @@ jobs:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
-          python3 -c '
+          python3 - << 'EOF'
           import os, json, urllib.request, gzip, re, xml.etree.ElementTree as ET
 
           KAYNAKLAR = [
@@ -65,20 +65,23 @@ jobs:
                           if eski_ch_id in id_haritasi:
                               prog.set("channel", id_haritasi[eski_ch_id])
                               ana_tv.append(prog)
-                  print(f"Islendi: {url}")
+                  print("Islendi:", url)
               except Exception as e:
-                  print(f"Hata ({url}): {e}")
+                  print("Hata:", url, e)
 
           xml_icerik = ET.tostring(ana_tv, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
-          gist_url = f"https://github.com{os.environ[\"GIST_ID\"]}"
+          gist_id = os.environ["GIST_ID"].strip()
+          gist_token = os.environ["GIST_TOKEN"].strip()
+          gist_url = f"https://github.com{gist_id}"
+
           payload = json.dumps({"files": {"guide.xml": {"content": xml_icerik}}}).encode("utf-8")
           gist_req = urllib.request.Request(gist_url, data=payload, method="PATCH", headers={
-              "Authorization": f"token {os.environ[\"GIST_TOKEN\"]}",
+              "Authorization": f"token {gist_token}",
               "Accept": "application/vnd.github.v3+json",
               "Content-Type": "application/json",
               "User-Agent": "EPG-Gist-Updater"
           })
           with urllib.request.urlopen(gist_req, timeout=30) as resp:
               print("Gist guncellendi! Durum:", resp.status)
-          '
+          EOF
