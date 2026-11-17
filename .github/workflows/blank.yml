@@ -30,7 +30,7 @@ jobs:
 
           def norm(m):
               s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
-              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
+              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
 
           ALAN_ADLARI = ["tvplus.com.tr","blue.ch","digitalb.al","melita.com","tivibu.com.tr","trt.net.tr","kanald.com.tr","atv.com.tr","showtv.com.tr","star.com.tr","tv8.com.tr"]
@@ -188,7 +188,7 @@ jobs:
 
           def norm(m):
               s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
-              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw|tr|turkey|tv\+|int|intl)\b", "", s)
+              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
 
           def saat_ekle(z):
@@ -198,63 +198,62 @@ jobs:
                   return z
               return z[:14] + " +0300"
 
-          # TÜM ADLAR kanallarını baştan ekle (programsuzlar da XML'de görünsün)
+          def varyantlar(eid):
+              if not eid:
+                  return []
+              v = set()
+              v.add(eid)
+              v.add(eid.split('@')[0])
+              v.add(re.sub(r'\.[a-z]{2,3}$', '', eid))
+              v.add(re.sub(r'\.[a-z]{2,3}$', '', eid).split('@')[0])
+              v.add(eid.split('.')[0])
+              return [x for x in v if x]
+
           kanallar = {}
           for n, (tid, gad) in ADLAR.items():
               kanallar[tid] = gad
 
-          # ham_guide.xml'i aç
           kok = ET.parse("ham_guide.xml").getroot()
-
-          # 1) ham_guide'daki kanalları ADLAR ile eşleştir
           eid_to_tid = {}
           for ch in kok.findall("channel"):
               eid = ch.get("id")
               if not eid: continue
-              
-              # display-name dene
               d_el = ch.find("display-name")
               ham_ad = d_el.text if (d_el is not None and d_el.text) else eid
               n = norm(ham_ad)
-              
-              # display-name tutmazsa, id'den @SD/@HD temizleyip tekrar dene
               if n not in ADLAR:
-                  base_id = eid.split('@')[0].split('.')[0]
+                  base_id = re.sub(r'\.[a-z]{2,3}$', '', eid).split('@')[0]
                   n = norm(base_id)
-                  
               if n in ADLAR:
                   tid = ADLAR[n][0]
-                  eid_to_tid[eid] = tid
+                  for v in varyantlar(eid):
+                      eid_to_tid[v] = tid
 
-          print("ham_guide icindeki kanallardan eslesen:", len(eid_to_tid))
+          print("ham_guide icindeki kanallardan eslesen benzersiz tid:",
+                len(set(eid_to_tid.values())))
 
-          # 2) Programları eşleştir
           proglar = []
           eklenen = set()
           programli = set()
+          eslesmeyen_ch = set()
 
           for p in kok.findall("programme"):
               eid = p.get("channel")
               if not eid: continue
-              
-              # Hem direkt eşleşmeyi hem de @SD/@HD kırpılmış halini dene
-              tid = eid_to_tid.get(eid)
+              tid = None
+              for v in varyantlar(eid):
+                  tid = eid_to_tid.get(v)
+                  if tid: break
               if not tid:
-                  base_id = eid.split('@')[0]
-                  tid = eid_to_tid.get(base_id)
-
-              if not tid:
+                  eslesmeyen_ch.add(eid)
                   continue
-
               b_el = p.find("title")
               if b_el is None or not b_el.text or not b_el.text.strip():
                   continue
-                  
               st = saat_ekle(p.get("start", ""))
               sp = saat_ekle(p.get("stop", ""))
               if not st or not sp or (tid, st) in eklenen:
                   continue
-                  
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
               ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(b_el.text)
@@ -264,7 +263,6 @@ jobs:
               proglar.append(yp)
               programli.add(tid)
 
-          # 3) XML yaz
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
@@ -276,15 +274,30 @@ jobs:
           programsiz = set(kanallar.keys()) - programli
           print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
                 % (len(kanallar), len(programli), len(programsiz), len(proglar)))
+          if eslesmeyen_ch:
+              print("Eslesmeyen ilk 10 channel ID:", sorted(eslesmeyen_ch)[:10])
           if programsiz:
               print("Programsiz ilk 10:", sorted(programsiz)[:10])
           PY
 
-      - name: Gist Guncelle
+      - name: Gist Guncelle ve Dogrula
         env:
           GH_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
+          
+          # 1. Gist'e yükle
           jq -n --rawfile content guide.xml '{files: {"guide.xml": {content: $content}}}' | \
-            gh api -X PATCH /gists/"$CLEAN_ID" --input -
+            gh api -X PATCH /gists/"$CLEAN_ID" --input - > /dev/null
+          
+          # 2. Yükleme sonrası doğrula: Gist'teki dosyanın ilk satırını çek
+          echo "=== GIST DOGRULAMA ==="
+          FIRST_LINE=$(gh api /gists/"$CLEAN_ID" --jq '.files["guide.xml"].content' | head -n 1)
+          echo "Gist'teki ilk satır: $FIRST_LINE"
+          
+          if [[ "$FIRST_LINE" != "<?xml"* ]]; then
+            echo "HATA: Gist'teki dosya gecerli XML degil! Ilk satir '<?xml' ile baslamiyor."
+            exit 1
+          fi
+          echo "BASARILI: Gist'teki dosya gecerli XML formatinda."
