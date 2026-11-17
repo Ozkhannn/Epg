@@ -33,7 +33,16 @@ jobs:
               s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw)\b", "", s)
               return re.sub(r"[^a-z0-9]", "", s)
 
-          ALAN_ADLARI = ["tvplus.com.tr","blue.ch","digitalb.al","melita.com","tivibu.com.tr","trt.net.tr","kanald.com.tr","atv.com.tr","showtv.com.tr","star.com.tr","tv8.com.tr"]
+          # Kaynak listesini genişlettik (Kanalların kendi siteleri eklendi)
+          ALAN_ADLARI = [
+              "tvplus.com.tr", "tivibu.com.tr", "trt.net.tr", "kanald.com.tr", 
+              "atv.com.tr", "showtv.com.tr", "star.com.tr", "tv8.com.tr", 
+              "nowtv.com.tr", "tv100.com.tr", "halktv.com.tr", "tele1.com.tr", 
+              "krttv.com.tr", "haberturk.com.tr", "ntv.com.tr", "cnnturk.com.tr", 
+              "ahaber.com.tr", "aspor.com.tr", "htspor.com", "fbtv.com.tr", 
+              "trtspor.com.tr", "trthaber.com", "melita.com", "blue.ch", "digitalb.al"
+          ]
+          
           out = ET.Element("channels")
           for alan in ALAN_ADLARI:
               dosya = "sites/%s/%s.channels.xml" % (alan, alan)
@@ -52,8 +61,8 @@ jobs:
             --channels=../filtre.xml \
             --output=../ham_guide.xml \
             --days=2 \
-            --maxConnections=10 \
-            --timeout=20000 2>&1 | tail -20 || true
+            --maxConnections=5 \
+            --timeout=30000 2>&1 | tail -20 || true
 
           echo "=== GRAB BITTI ==="
           if [ -s ../ham_guide.xml ]; then
@@ -71,115 +80,45 @@ jobs:
           import re, xml.etree.ElementTree as ET
 
           ADLAR = {
-              "trt1": ("TRT1.tr", "TRT 1"),
-              "trt2": ("TRT2.tr", "TRT 2"),
-              "trthaber": ("TRTHaber.tr", "TRT Haber"),
-              "trtspor": ("TRTSpor.tr", "TRT Spor"),
-              "trtsporyildiz": ("TRTSporYildiz.tr", "TRT Spor Yıldız"),
-              "trtbelgesel": ("TRTBelgesel.tr", "TRT Belgesel"),
-              "trtcocuk": ("TRTCocuk.tr", "TRT Çocuk"),
-              "trtmuzik": ("TRTMuzik.tr", "TRT Müzik"),
-              "trtturk": ("TRTTurk.tr", "TRT Türk"),
-              "trtavaz": ("TRTAvaz.tr", "TRT Avaz"),
-              "trtkurdi": ("TRTKurdi.tr", "TRT Kurdi"),
-              "trtworld": ("TRTWorld.tr", "TRT World"),
-              "kanald": ("KanalD.tr", "Kanal D"),
-              "eurod": ("EuroD.tr", "Euro D"),
-              "kanalddrama": ("KanalDDrama.tr", "Kanal D Drama"),
-              "atv": ("ATV.tr", "ATV"),
-              "a2": ("A2.tr", "A2"),
-              "showtv": ("ShowTV.tr", "Show TV"),
-              "showturk": ("ShowTurk.tr", "Show Türk"),
-              "showmax": ("ShowMax.tr", "Show Max"),
-              "startv": ("StarTV.tr", "Star TV"),
-              "eurostar": ("EuroStar.tr", "Euro Star"),
-              "now": ("NOW.tr", "NOW"),
-              "nowtv": ("NOW.tr", "NOW"),
-              "fox": ("NOW.tr", "NOW"),
-              "tv8": ("TV8.tr", "TV8"),
-              "tv85": ("TV85.tr", "TV8,5"),
-              "tv8bucuk": ("TV85.tr", "TV8,5"),
-              "kanal7": ("Kanal7.tr", "Kanal 7"),
-              "ulketv": ("UlkeTV.tr", "Ülke TV"),
-              "beyaztv": ("BeyazTV.tr", "Beyaz TV"),
-              "teve2": ("Teve2.tr", "Teve2"),
-              "tv4": ("TV4.tr", "TV 4"),
-              "360": ("360.tr", "360"),
-              "tlc": ("TLC.tr", "TLC"),
-              "dmax": ("DMAX.tr", "DMAX"),
-              "cnbce": ("CNBCe.tr", "CNBC-e"),
-              "ekoltv": ("EkolTV.tr", "Ekol TV"),
-              "beinsports": ("beINSports1.tr", "beIN Sports 1"),
-              "beinsports1": ("beINSports1.tr", "beIN Sports 1"),
-              "beinsports2": ("beINSports2.tr", "beIN Sports 2"),
-              "beinsports3": ("beINSports3.tr", "beIN Sports 3"),
-              "beinsports4": ("beINSports4.tr", "beIN Sports 4"),
-              "beinsports5": ("beINSports5.tr", "beIN Sports 5"),
-              "beinsportsmax1": ("beINSportsMAX1.tr", "beIN Sports MAX 1"),
-              "beinsportsmax2": ("beINSportsMAX2.tr", "beIN Sports MAX 2"),
-              "beinsportshaber": ("beINSportsHaber.tr", "beIN Sports Haber"),
-              "tivibuspor": ("TivibuSpor.tr", "Tivibu Spor"),
-              "tivibuspor1": ("TivibuSpor1.tr", "Tivibu Spor 1"),
-              "tivibuspor2": ("TivibuSpor2.tr", "Tivibu Spor 2"),
-              "tivibuspor3": ("TivibuSpor3.tr", "Tivibu Spor 3"),
-              "tivibuspor4": ("TivibuSpor4.tr", "Tivibu Spor 4"),
-              "ssport": ("SSport.tr", "S Sport"),
-              "ssport1": ("SSport1.tr", "S Sport 1"),
-              "ssport2": ("SSport2.tr", "S Sport 2"),
-              "smartspor": ("SmartSpor.tr", "Smart Spor"),
-              "smartspor1": ("SmartSpor1.tr", "Smart Spor 1"),
-              "smartspor2": ("SmartSpor2.tr", "Smart Spor 2"),
-              "eurosport1": ("Eurosport1.tr", "Eurosport 1"),
-              "eurosport2": ("Eurosport2.tr", "Eurosport 2"),
-              "aspor": ("ASpor.tr", "A Spor"),
-              "htspor": ("HTSpor.tr", "HT Spor"),
-              "sportstv": ("SportsTV.tr", "Sports TV"),
-              "fbtv": ("FBTV.tr", "FB TV"),
-              "ntv": ("NTV.tr", "NTV"),
-              "cnnturk": ("CNNTurk.tr", "CNN Türk"),
-              "haberturk": ("Haberturk.tr", "Habertürk"),
-              "ahaber": ("AHaber.tr", "A Haber"),
-              "anews": ("ANews.tr", "A News"),
-              "apara": ("APara.tr", "A Para"),
-              "bloomberght": ("BloombergHT.tr", "Bloomberg HT"),
-              "ekoturk": ("Ekoturk.tr", "Ekotürk"),
-              "halktv": ("HalkTV.tr", "Halk TV"),
-              "sozcutv": ("SozcuTV.tr", "Sözcü TV"),
-              "tele1": ("Tele1.tr", "Tele1"),
-              "krttv": ("KRTTV.tr", "KRT TV"),
-              "haberglobal": ("HaberGlobal.tr", "Haber Global"),
-              "24tv": ("24TV.tr", "24 TV"),
-              "tgrthaber": ("TGRTHaber.tr", "TGRT Haber"),
-              "tgrteu": ("TGRTEU.tr", "TGRT EU"),
-              "tgrtbelgesel": ("TGRTBelgesel.tr", "TGRT Belgesel"),
-              "benguturk": ("Benguturk.tr", "Bengütürk"),
-              "tv100": ("TV100.tr", "TV100"),
-              "akittv": ("AkitTV.tr", "Akit TV"),
-              "liderhabertv": ("LiderHaber.tr", "Lider Haber"),
-              "flashhaber": ("FlashHaber.tr", "Flash Haber"),
-              "tytturk": ("TYTTurk.tr", "TYT Türk"),
-              "nationalgeographic": ("NationalGeographic.tr", "National Geographic"),
-              "natgeo": ("NationalGeographic.tr", "National Geographic"),
-              "natgeowild": ("NatGeoWild.tr", "Nat Geo Wild"),
-              "discoverychannel": ("DiscoveryChannel.tr", "Discovery Channel"),
-              "discovery": ("DiscoveryChannel.tr", "Discovery Channel"),
-              "bbcearth": ("BBCEarth.tr", "BBC Earth"),
-              "bbcfirst": ("BBCFirst.tr", "BBC First"),
-              "history": ("History.tr", "History"),
-              "tarihtv": ("TarihTV.tr", "Tarih TV"),
-              "habitattv": ("HabitatTV.tr", "Habitat TV"),
-              "minikago": ("MinikaGO.tr", "MinikaGO"),
-              "minikacocuk": ("MinikaCocuk.tr", "Minika Çocuk"),
-              "cartoonnetwork": ("CartoonNetwork.tr", "Cartoon Network"),
-              "disneyjunior": ("DisneyJunior.tr", "Disney Junior"),
-              "nickjr": ("NickJr.tr", "Nick Jr"),
-              "nickelodeon": ("Nickelodeon.tr", "Nickelodeon"),
-              "babytv": ("BabyTV.tr", "Baby TV"),
-              "powerturk": ("PowerTurk.tr", "Power Türk"),
-              "powertv": ("PowerTV.tr", "Power TV"),
-              "kralpop": ("KralPop.tr", "Kral Pop"),
-              "dreamturk": ("DreamTurk.tr", "Dream Türk"),
-              "number1turk": ("Number1Turk.tr", "Number1 Türk"),
+              "trt1": ("TRT1.tr", "TRT 1"), "trt2": ("TRT2.tr", "TRT 2"), "trthaber": ("TRTHaber.tr", "TRT Haber"),
+              "trtspor": ("TRTSpor.tr", "TRT Spor"), "trtsporyildiz": ("TRTSporYildiz.tr", "TRT Spor Yıldız"),
+              "trtbelgesel": ("TRTBelgesel.tr", "TRT Belgesel"), "trtcocuk": ("TRTCocuk.tr", "TRT Çocuk"),
+              "trtmuzik": ("TRTMuzik.tr", "TRT Müzik"), "trtturk": ("TRTTurk.tr", "TRT Türk"), "trtavaz": ("TRTAvaz.tr", "TRT Avaz"),
+              "trtkurdi": ("TRTKurdi.tr", "TRT Kurdi"), "trtworld": ("TRTWorld.tr", "TRT World"), "kanald": ("KanalD.tr", "Kanal D"),
+              "eurod": ("EuroD.tr", "Euro D"), "kanalddrama": ("KanalDDrama.tr", "Kanal D Drama"), "atv": ("ATV.tr", "ATV"),
+              "a2": ("A2.tr", "A2"), "showtv": ("ShowTV.tr", "Show TV"), "showturk": ("ShowTurk.tr", "Show Türk"),
+              "showmax": ("ShowMax.tr", "Show Max"), "startv": ("StarTV.tr", "Star TV"), "eurostar": ("EuroStar.tr", "Euro Star"),
+              "now": ("NOW.tr", "NOW"), "nowtv": ("NOW.tr", "NOW"), "fox": ("NOW.tr", "NOW"), "tv8": ("TV8.tr", "TV8"),
+              "tv85": ("TV85.tr", "TV8,5"), "tv8bucuk": ("TV85.tr", "TV8,5"), "kanal7": ("Kanal7.tr", "Kanal 7"),
+              "ulketv": ("UlkeTV.tr", "Ülke TV"), "beyaztv": ("BeyazTV.tr", "Beyaz TV"), "teve2": ("Teve2.tr", "Teve2"),
+              "tv4": ("TV4.tr", "TV 4"), "360": ("360.tr", "360"), "tlc": ("TLC.tr", "TLC"), "dmax": ("DMAX.tr", "DMAX"),
+              "cnbce": ("CNBCe.tr", "CNBC-e"), "ekoltv": ("EkolTV.tr", "Ekol TV"), "beinsports": ("beINSports1.tr", "beIN Sports 1"),
+              "beinsports1": ("beINSports1.tr", "beIN Sports 1"), "beinsports2": ("beINSports2.tr", "beIN Sports 2"),
+              "beinsports3": ("beINSports3.tr", "beIN Sports 3"), "beinsports4": ("beINSports4.tr", "beIN Sports 4"),
+              "beinsports5": ("beINSports5.tr", "beIN Sports 5"), "beinsportsmax1": ("beINSportsMAX1.tr", "beIN Sports MAX 1"),
+              "beinsportsmax2": ("beINSportsMAX2.tr", "beIN Sports MAX 2"), "beinsportshaber": ("beINSportsHaber.tr", "beIN Sports Haber"),
+              "tivibuspor": ("TivibuSpor.tr", "Tivibu Spor"), "tivibuspor1": ("TivibuSpor1.tr", "Tivibu Spor 1"),
+              "tivibuspor2": ("TivibuSpor2.tr", "Tivibu Spor 2"), "tivibuspor3": ("TivibuSpor3.tr", "Tivibu Spor 3"),
+              "tivibuspor4": ("TivibuSpor4.tr", "Tivibu Spor 4"), "ssport": ("SSport.tr", "S Sport"), "ssport1": ("SSport1.tr", "S Sport 1"),
+              "ssport2": ("SSport2.tr", "S Sport 2"), "smartspor": ("SmartSpor.tr", "Smart Spor"), "smartspor1": ("SmartSpor1.tr", "Smart Spor 1"),
+              "smartspor2": ("SmartSpor2.tr", "Smart Spor 2"), "eurosport1": ("Eurosport1.tr", "Eurosport 1"), "eurosport2": ("Eurosport2.tr", "Eurosport 2"),
+              "aspor": ("ASpor.tr", "A Spor"), "htspor": ("HTSpor.tr", "HT Spor"), "sportstv": ("SportsTV.tr", "Sports TV"),
+              "fbtv": ("FBTV.tr", "FB TV"), "ntv": ("NTV.tr", "NTV"), "cnnturk": ("CNNTurk.tr", "CNN Türk"),
+              "haberturk": ("Haberturk.tr", "Habertürk"), "ahaber": ("AHaber.tr", "A Haber"), "anews": ("ANews.tr", "A News"),
+              "apara": ("APara.tr", "A Para"), "bloomberght": ("BloombergHT.tr", "Bloomberg HT"), "ekoturk": ("Ekoturk.tr", "Ekotürk"),
+              "halktv": ("HalkTV.tr", "Halk TV"), "sozcutv": ("SozcuTV.tr", "Sözcü TV"), "tele1": ("Tele1.tr", "Tele1"),
+              "krttv": ("KRTTV.tr", "KRT TV"), "haberglobal": ("HaberGlobal.tr", "Haber Global"), "24tv": ("24TV.tr", "24 TV"),
+              "tgrthaber": ("TGRTHaber.tr", "TGRT Haber"), "tgrteu": ("TGRTEU.tr", "TGRT EU"), "tgrtbelgesel": ("TGRTBelgesel.tr", "TGRT Belgesel"),
+              "benguturk": ("Benguturk.tr", "Bengütürk"), "tv100": ("TV100.tr", "TV100"), "akittv": ("AkitTV.tr", "Akit TV"),
+              "liderhabertv": ("LiderHaber.tr", "Lider Haber"), "flashhaber": ("FlashHaber.tr", "Flash Haber"), "tytturk": ("TYTTurk.tr", "TYT Türk"),
+              "nationalgeographic": ("NationalGeographic.tr", "National Geographic"), "natgeo": ("NationalGeographic.tr", "National Geographic"),
+              "natgeowild": ("NatGeoWild.tr", "Nat Geo Wild"), "discoverychannel": ("DiscoveryChannel.tr", "Discovery Channel"),
+              "discovery": ("DiscoveryChannel.tr", "Discovery Channel"), "bbcearth": ("BBCEarth.tr", "BBC Earth"), "bbcfirst": ("BBCFirst.tr", "BBC First"),
+              "history": ("History.tr", "History"), "tarihtv": ("TarihTV.tr", "Tarih TV"), "habitattv": ("HabitatTV.tr", "Habitat TV"),
+              "minikago": ("MinikaGO.tr", "MinikaGO"), "minikacocuk": ("MinikaCocuk.tr", "Minika Çocuk"), "cartoonnetwork": ("CartoonNetwork.tr", "Cartoon Network"),
+              "disneyjunior": ("DisneyJunior.tr", "Disney Junior"), "nickjr": ("NickJr.tr", "Nick Jr"), "nickelodeon": ("Nickelodeon.tr", "Nickelodeon"),
+              "babytv": ("BabyTV.tr", "Baby TV"), "powerturk": ("PowerTurk.tr", "Power Türk"), "powertv": ("PowerTV.tr", "Power TV"),
+              "kralpop": ("KralPop.tr", "Kral Pop"), "dreamturk": ("DreamTurk.tr", "Dream Türk"), "number1turk": ("Number1Turk.tr", "Number1 Türk"),
               "number1tv": ("Number1TV.tr", "Number1 TV"),
           }
 
@@ -229,13 +168,11 @@ jobs:
                   for v in varyantlar(eid):
                       eid_to_tid[v] = tid
 
-          print("ham_guide icindeki kanallardan eslesen benzersiz tid:",
-                len(set(eid_to_tid.values())))
+          print("ham_guide icindeki eslesen benzersiz kanal:", len(set(eid_to_tid.values())))
 
           proglar = []
           eklenen = set()
           programli = set()
-          eslesmeyen_ch = set()
 
           for p in kok.findall("programme"):
               eid = p.get("channel")
@@ -244,16 +181,12 @@ jobs:
               for v in varyantlar(eid):
                   tid = eid_to_tid.get(v)
                   if tid: break
-              if not tid:
-                  eslesmeyen_ch.add(eid)
-                  continue
+              if not tid: continue
               b_el = p.find("title")
-              if b_el is None or not b_el.text or not b_el.text.strip():
-                  continue
+              if b_el is None or not b_el.text or not b_el.text.strip(): continue
               st = saat_ekle(p.get("start", ""))
               sp = saat_ekle(p.get("stop", ""))
-              if not st or not sp or (tid, st) in eklenen:
-                  continue
+              if not st or not sp or (tid, st) in eklenen: continue
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
               ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(b_el.text)
@@ -274,10 +207,10 @@ jobs:
           programsiz = set(kanallar.keys()) - programli
           print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
                 % (len(kanallar), len(programli), len(programsiz), len(proglar)))
-          if eslesmeyen_ch:
-              print("Eslesmeyen ilk 10 channel ID:", sorted(eslesmeyen_ch)[:10])
+          
+          # Hangi kanallarin cekilemedigini gormek icin detayli log
           if programsiz:
-              print("Programsiz ilk 10:", sorted(programsiz)[:10])
+              print("BILGI YOK (Programsiz) ilk 20:", sorted(programsiz)[:20])
           PY
 
       - name: Gist Guncelle ve Dogrula
@@ -286,18 +219,14 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
-          
-          # 1. Gist'e yükle
           jq -n --rawfile content guide.xml '{files: {"guide.xml": {content: $content}}}' | \
             gh api -X PATCH /gists/"$CLEAN_ID" --input - > /dev/null
           
-          # 2. Yükleme sonrası doğrula: Gist'teki dosyanın ilk satırını çek
           echo "=== GIST DOGRULAMA ==="
           FIRST_LINE=$(gh api /gists/"$CLEAN_ID" --jq '.files["guide.xml"].content' | head -n 1)
           echo "Gist'teki ilk satır: $FIRST_LINE"
-          
           if [[ "$FIRST_LINE" != "<?xml"* ]]; then
-            echo "HATA: Gist'teki dosya gecerli XML degil! Ilk satir '<?xml' ile baslamiyor."
+            echo "HATA: Gist guncellenemedi!"
             exit 1
           fi
-          echo "BASARILI: Gist'teki dosya gecerli XML formatinda."
+          echo "BASARILI: Gist guncellendi."
