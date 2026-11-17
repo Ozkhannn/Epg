@@ -198,12 +198,12 @@ jobs:
                   return z
               return z[:14] + " +0300"
 
-          # 1) ADLAR'dan TUM benzersiz kanallari bas (program olsun veya olmasin)
+          # 1) ADLAR'dan TUM benzersiz kanallari bas
           kanallar = {}
           for n, (tid, gad) in ADLAR.items():
               kanallar[tid] = gad
 
-          # 2) filtre.xml'den xmltv_id -> tid eslesmesi
+          # 2) filtre.xml'den eslesme haritasi cikar
           id_map = {}
           filtre_kok = ET.parse("filtre.xml").getroot()
           for ch in filtre_kok.findall("channel"):
@@ -214,9 +214,7 @@ jobs:
               if n in ADLAR:
                   id_map[eid] = ADLAR[n][0]
 
-          print("Beklenen benzersiz kanal:", len(kanallar), "| id_map kaydi:", len(id_map))
-
-          # 3) Programlari ham_guide.xml'den al ve id_map uzerinden esle
+          # 3) Programlari ham_guide.xml'den al
           kok = ET.parse("ham_guide.xml").getroot()
           proglar = []
           eklenen = set()
@@ -224,16 +222,24 @@ jobs:
 
           for p in kok.findall("programme"):
               eid = p.get("channel")
-              tid = id_map.get(eid)
+              if not eid: continue
+              
+              # Grab bazen @SD veya @HD ekliyor, bunu temizle
+              base_eid = eid.split('@')[0]
+              tid = id_map.get(base_eid)
+              
               if not tid:
                   continue
+                  
               b_el = p.find("title")
               if b_el is None or not b_el.text or not b_el.text.strip():
                   continue
+                  
               st = saat_ekle(p.get("start", ""))
               sp = saat_ekle(p.get("stop", ""))
               if not st or not sp or (tid, st) in eklenen:
                   continue
+                  
               eklenen.add((tid, st))
               yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
               ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(b_el.text)
@@ -243,7 +249,7 @@ jobs:
               proglar.append(yp)
               programli.add(tid)
 
-          # 4) XML yaz
+          # 4) XML'i yaz
           tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
@@ -255,8 +261,6 @@ jobs:
           programsiz = set(kanallar.keys()) - programli
           print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
                 % (len(kanallar), len(programli), len(programsiz), len(proglar)))
-          if programsiz:
-              print("Programsiz ilk 15:", sorted(programsiz)[:15])
           PY
 
       - name: Gist Guncelle
