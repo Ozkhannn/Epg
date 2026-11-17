@@ -2,7 +2,7 @@ name: Hizli ve Yedekli Turkiye EPG (Gist)
 
 on:
   schedule:
-    - cron: '0 2 * * *' # Her gün sabah 02:00'de çalışır
+    - cron: '0 2(devredışı) * * *' # Her gün sabah 02:00'de çalışır
   workflow_dispatch: # İstediğiniz zaman manuel tetikleyebilirsiniz
 
 jobs:
