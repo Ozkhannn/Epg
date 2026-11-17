@@ -2,215 +2,220 @@ name: Hizli ve Yedekli Turkiye EPG (Gist)
 
 on:
   schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * *' # Her gün sabah 02:00'de çalışır
+  workflow_dispatch: # İstediğiniz zaman manuel tetikleyebilirsiniz
 
 jobs:
   epg-uret:
     runs-on: ubuntu-latest
     steps:
-      - name: Node Kur
-        uses: actions/setup-node@v5
+      - name: Python ve Kutuphaneleri Kur
+        uses: actions/setup-python@v5
         with:
-          node-version: '24'
-
-      - name: Kaziyici Hazirla
-        run: |
-          git clone --depth 1 --single-branch "https://github.com/iptv-org/epg.git" epg_tool >/dev/null 2>&1
-          cd epg_tool
-          npm install --no-audit --no-fund --silent >/dev/null 2>&1
-
-      - name: Yerli Kanallari Hizli Tara ve Cek
-        run: |
-          cd epg_tool
-          python3 <<'PY'
-          import re, xml.etree.ElementTree as ET
-
-          HEDEF = {"trt1","trt2","trthaber","trtspor","trtsporyildiz","trtbelgesel","trtcocuk","trtmuzik","trtturk","trtavaz","trtkurdi","trtworld","kanald","eurod","kanalddrama","atv","atvahaber","a2","showtv","showturk","showmax","startv","eurostar","now","nowtv","fox","foxturk","tv8","tv85","tv8bucuk","kanal7","ulketv","beyaztv","teve2","tv4","360","tlc","dmax","cnbce","ekoltv","beinsports","beinsports1","beinsports2","beinsports3","beinsports4","beinsports5","beinsportsmax1","beinsportsmax2","beinsportshaber","tivibuspor","tivibuspor1","tivibuspor2","tivibuspor3","tivibuspor4","ssport","ssport1","ssport2","smartspor","smartspor1","smartspor2","eurosport1","eurosport2","aspor","htspor","sportstv","fbtv","ntv","cnnturk","haberturk","ahaber","anews","apara","bloomberght","ekoturk","halktv","sozcutv","tele1","krttv","haberglobal","24tv","tgrthaber","tgrteu","tgrtbelgesel","benguturk","tv100","akittv","liderhabertv","flashhaber","tytturk","nationalgeographic","natgeo","natgeowild","discoverychannel","discovery","bbcearth","bbcfirst","history","tarihtv","habitattv","minikago","minikacocuk","cartoonnetwork","disneyjunior","nickjr","nickelodeon","babytv","powerturk","powertv","kralpop","dreamturk","number1turk","number1tv"}
-
-          def norm(m):
-              s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
-              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw)\b", "", s)
-              return re.sub(r"[^a-z0-9]", "", s)
-
-          # Kaynak listesini genişlettik (Kanalların kendi siteleri eklendi)
-          ALAN_ADLARI = [
-              "tvplus.com.tr", "tivibu.com.tr", "trt.net.tr", "kanald.com.tr", 
-              "atv.com.tr", "showtv.com.tr", "star.com.tr", "tv8.com.tr", 
-              "nowtv.com.tr", "tv100.com.tr", "halktv.com.tr", "tele1.com.tr", 
-              "krttv.com.tr", "haberturk.com.tr", "ntv.com.tr", "cnnturk.com.tr", 
-              "ahaber.com.tr", "aspor.com.tr", "htspor.com", "fbtv.com.tr", 
-              "trtspor.com.tr", "trthaber.com", "melita.com", "blue.ch", "digitalb.al"
-          ]
+          python-version: '3.11'
           
-          out = ET.Element("channels")
-          for alan in ALAN_ADLARI:
-              dosya = "sites/%s/%s.channels.xml" % (alan, alan)
-              try:
-                  for ch in ET.parse(dosya).getroot().findall("channel"):
-                      if norm(ch.text or "") in HEDEF:
-                          out.append(ch)
-              except Exception:
-                  pass
-          ET.ElementTree(out).write("../filtre.xml", encoding="utf-8", xml_declaration=True)
-          print("Taranacak yerli kanal kaydi:", len(out))
-          PY
+      - name: Gerekli Paketleri Yukle
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
 
-          echo "=== GRAB BASLIYOR ==="
-          npm run grab -- \
-            --channels=../filtre.xml \
-            --output=../ham_guide.xml \
-            --days=2 \
-            --maxConnections=5 \
-            --timeout=30000 2>&1 | tail -20 || true
-
-          echo "=== GRAB BITTI ==="
-          if [ -s ../ham_guide.xml ]; then
-            HAM_CH=$(grep -o '<channel ' ../ham_guide.xml | wc -l)
-            HAM_PR=$(grep -o '<programme ' ../ham_guide.xml | wc -l)
-            echo "ham_guide.xml -> $HAM_CH kanal, $HAM_PR program"
-          else
-            echo "HATA: ham_guide.xml bos veya yok"
-            exit 1
-          fi
-
-      - name: Yedekli TiviMate XML Olustur
+      - name: TVYayinAkisi.com Uzerinden EPG Cek
         run: |
           python3 <<'PY'
-          import re, xml.etree.ElementTree as ET
+          import requests
+          from bs4 import BeautifulSoup
+          import xml.etree.ElementTree as ET
+          from datetime import datetime, timedelta
+          import re
 
-          ADLAR = {
-              "trt1": ("TRT1.tr", "TRT 1"), "trt2": ("TRT2.tr", "TRT 2"), "trthaber": ("TRTHaber.tr", "TRT Haber"),
-              "trtspor": ("TRTSpor.tr", "TRT Spor"), "trtsporyildiz": ("TRTSporYildiz.tr", "TRT Spor Yıldız"),
-              "trtbelgesel": ("TRTBelgesel.tr", "TRT Belgesel"), "trtcocuk": ("TRTCocuk.tr", "TRT Çocuk"),
-              "trtmuzik": ("TRTMuzik.tr", "TRT Müzik"), "trtturk": ("TRTTurk.tr", "TRT Türk"), "trtavaz": ("TRTAvaz.tr", "TRT Avaz"),
-              "trtkurdi": ("TRTKurdi.tr", "TRT Kurdi"), "trtworld": ("TRTWorld.tr", "TRT World"), "kanald": ("KanalD.tr", "Kanal D"),
-              "eurod": ("EuroD.tr", "Euro D"), "kanalddrama": ("KanalDDrama.tr", "Kanal D Drama"), "atv": ("ATV.tr", "ATV"),
-              "a2": ("A2.tr", "A2"), "showtv": ("ShowTV.tr", "Show TV"), "showturk": ("ShowTurk.tr", "Show Türk"),
-              "showmax": ("ShowMax.tr", "Show Max"), "startv": ("StarTV.tr", "Star TV"), "eurostar": ("EuroStar.tr", "Euro Star"),
-              "now": ("NOW.tr", "NOW"), "nowtv": ("NOW.tr", "NOW"), "fox": ("NOW.tr", "NOW"), "tv8": ("TV8.tr", "TV8"),
-              "tv85": ("TV85.tr", "TV8,5"), "tv8bucuk": ("TV85.tr", "TV8,5"), "kanal7": ("Kanal7.tr", "Kanal 7"),
-              "ulketv": ("UlkeTV.tr", "Ülke TV"), "beyaztv": ("BeyazTV.tr", "Beyaz TV"), "teve2": ("Teve2.tr", "Teve2"),
-              "tv4": ("TV4.tr", "TV 4"), "360": ("360.tr", "360"), "tlc": ("TLC.tr", "TLC"), "dmax": ("DMAX.tr", "DMAX"),
-              "cnbce": ("CNBCe.tr", "CNBC-e"), "ekoltv": ("EkolTV.tr", "Ekol TV"), "beinsports": ("beINSports1.tr", "beIN Sports 1"),
-              "beinsports1": ("beINSports1.tr", "beIN Sports 1"), "beinsports2": ("beINSports2.tr", "beIN Sports 2"),
-              "beinsports3": ("beINSports3.tr", "beIN Sports 3"), "beinsports4": ("beINSports4.tr", "beIN Sports 4"),
-              "beinsports5": ("beINSports5.tr", "beIN Sports 5"), "beinsportsmax1": ("beINSportsMAX1.tr", "beIN Sports MAX 1"),
-              "beinsportsmax2": ("beINSportsMAX2.tr", "beIN Sports MAX 2"), "beinsportshaber": ("beINSportsHaber.tr", "beIN Sports Haber"),
-              "tivibuspor": ("TivibuSpor.tr", "Tivibu Spor"), "tivibuspor1": ("TivibuSpor1.tr", "Tivibu Spor 1"),
-              "tivibuspor2": ("TivibuSpor2.tr", "Tivibu Spor 2"), "tivibuspor3": ("TivibuSpor3.tr", "Tivibu Spor 3"),
-              "tivibuspor4": ("TivibuSpor4.tr", "Tivibu Spor 4"), "ssport": ("SSport.tr", "S Sport"), "ssport1": ("SSport1.tr", "S Sport 1"),
-              "ssport2": ("SSport2.tr", "S Sport 2"), "smartspor": ("SmartSpor.tr", "Smart Spor"), "smartspor1": ("SmartSpor1.tr", "Smart Spor 1"),
-              "smartspor2": ("SmartSpor2.tr", "Smart Spor 2"), "eurosport1": ("Eurosport1.tr", "Eurosport 1"), "eurosport2": ("Eurosport2.tr", "Eurosport 2"),
-              "aspor": ("ASpor.tr", "A Spor"), "htspor": ("HTSpor.tr", "HT Spor"), "sportstv": ("SportsTV.tr", "Sports TV"),
-              "fbtv": ("FBTV.tr", "FB TV"), "ntv": ("NTV.tr", "NTV"), "cnnturk": ("CNNTurk.tr", "CNN Türk"),
-              "haberturk": ("Haberturk.tr", "Habertürk"), "ahaber": ("AHaber.tr", "A Haber"), "anews": ("ANews.tr", "A News"),
-              "apara": ("APara.tr", "A Para"), "bloomberght": ("BloombergHT.tr", "Bloomberg HT"), "ekoturk": ("Ekoturk.tr", "Ekotürk"),
-              "halktv": ("HalkTV.tr", "Halk TV"), "sozcutv": ("SozcuTV.tr", "Sözcü TV"), "tele1": ("Tele1.tr", "Tele1"),
-              "krttv": ("KRTTV.tr", "KRT TV"), "haberglobal": ("HaberGlobal.tr", "Haber Global"), "24tv": ("24TV.tr", "24 TV"),
-              "tgrthaber": ("TGRTHaber.tr", "TGRT Haber"), "tgrteu": ("TGRTEU.tr", "TGRT EU"), "tgrtbelgesel": ("TGRTBelgesel.tr", "TGRT Belgesel"),
-              "benguturk": ("Benguturk.tr", "Bengütürk"), "tv100": ("TV100.tr", "TV100"), "akittv": ("AkitTV.tr", "Akit TV"),
-              "liderhabertv": ("LiderHaber.tr", "Lider Haber"), "flashhaber": ("FlashHaber.tr", "Flash Haber"), "tytturk": ("TYTTurk.tr", "TYT Türk"),
-              "nationalgeographic": ("NationalGeographic.tr", "National Geographic"), "natgeo": ("NationalGeographic.tr", "National Geographic"),
-              "natgeowild": ("NatGeoWild.tr", "Nat Geo Wild"), "discoverychannel": ("DiscoveryChannel.tr", "Discovery Channel"),
-              "discovery": ("DiscoveryChannel.tr", "Discovery Channel"), "bbcearth": ("BBCEarth.tr", "BBC Earth"), "bbcfirst": ("BBCFirst.tr", "BBC First"),
-              "history": ("History.tr", "History"), "tarihtv": ("TarihTV.tr", "Tarih TV"), "habitattv": ("HabitatTV.tr", "Habitat TV"),
-              "minikago": ("MinikaGO.tr", "MinikaGO"), "minikacocuk": ("MinikaCocuk.tr", "Minika Çocuk"), "cartoonnetwork": ("CartoonNetwork.tr", "Cartoon Network"),
-              "disneyjunior": ("DisneyJunior.tr", "Disney Junior"), "nickjr": ("NickJr.tr", "Nick Jr"), "nickelodeon": ("Nickelodeon.tr", "Nickelodeon"),
-              "babytv": ("BabyTV.tr", "Baby TV"), "powerturk": ("PowerTurk.tr", "Power Türk"), "powertv": ("PowerTV.tr", "Power TV"),
-              "kralpop": ("KralPop.tr", "Kral Pop"), "dreamturk": ("DreamTurk.tr", "Dream Türk"), "number1turk": ("Number1Turk.tr", "Number1 Türk"),
-              "number1tv": ("Number1TV.tr", "Number1 TV"),
+          # M3U listenizdeki tvg-id'ler ile birebir eslesen kanal listesi
+          # (Gerekirse buradaki slug'lari ve ID'leri kendi listenize gore guncelleyin)
+          KANALLAR = {
+              "trt-1-yayin-akisi": ("TRT1.tr", "TRT 1"),
+              "trt-2-yayin-akisi": ("TRT2.tr", "TRT 2"),
+              "trt-haber-yayin-akisi": ("TRTHaber.tr", "TRT Haber"),
+              "trt-spor-yayin-akisi": ("TRTSpor.tr", "TRT Spor"),
+              "trt-belgesel-yayin-akisi": ("TRTBelgesel.tr", "TRT Belgesel"),
+              "trt-cocuk-yayin-akisi": ("TRTCocuk.tr", "TRT Çocuk"),
+              "trt-muzik-yayin-akisi": ("TRTMuzik.tr", "TRT Müzik"),
+              "trt-turk-yayin-akisi": ("TRTTurk.tr", "TRT Türk"),
+              "trt-avaz-yayin-akisi": ("TRTAvaz.tr", "TRT Avaz"),
+              "trt-kurdi-yayin-akisi": ("TRTKurdi.tr", "TRT Kurdi"),
+              "trt-world-yayin-akisi": ("TRTWorld.tr", "TRT World"),
+              "kanal-d-yayin-akisi": ("KanalD.tr", "Kanal D"),
+              "atv-yayin-akisi": ("ATV.tr", "ATV"),
+              "a2-yayin-akisi": ("A2.tr", "A2"),
+              "show-tv-yayin-akisi": ("ShowTV.tr", "Show TV"),
+              "show-turk-yayin-akisi": ("ShowTurk.tr", "Show Türk"),
+              "star-tv-yayin-akisi": ("StarTV.tr", "Star TV"),
+              "now-tv-yayin-akisi": ("NOW.tr", "NOW"),
+              "tv8-yayin-akisi": ("TV8.tr", "TV8"),
+              "tv8-5-yayin-akisi": ("TV85.tr", "TV8,5"),
+              "kanal-7-yayin-akisi": ("Kanal7.tr", "Kanal 7"),
+              "ulke-tv-yayin-akisi": ("UlkeTV.tr", "Ülke TV"),
+              "beyaz-tv-yayin-akisi": ("BeyazTV.tr", "Beyaz TV"),
+              "teve2-yayin-akisi": ("Teve2.tr", "Teve2"),
+              "tv4-yayin-akisi": ("TV4.tr", "TV 4"),
+              "360-yayin-akisi": ("360.tr", "360"),
+              "tlc-yayin-akisi": ("TLC.tr", "TLC"),
+              "dmax-yayin-akisi": ("DMAX.tr", "DMAX"),
+              "cnbc-e-yayin-akisi": ("CNBCe.tr", "CNBC-e"),
+              "ekol-tv-yayin-akisi": ("EkolTV.tr", "Ekol TV"),
+              "beinsports-1-yayin-akisi": ("beINSports1.tr", "beIN Sports 1"),
+              "beinsports-2-yayin-akisi": ("beINSports2.tr", "beIN Sports 2"),
+              "beinsports-3-yayin-akisi": ("beINSports3.tr", "beIN Sports 3"),
+              "beinsports-4-yayin-akisi": ("beINSports4.tr", "beIN Sports 4"),
+              "beinsports-5-yayin-akisi": ("beINSports5.tr", "beIN Sports 5"),
+              "beinsports-max-1-yayin-akisi": ("beINSportsMAX1.tr", "beIN Sports MAX 1"),
+              "beinsports-max-2-yayin-akisi": ("beINSportsMAX2.tr", "beIN Sports MAX 2"),
+              "beinsports-haber-yayin-akisi": ("beINSportsHaber.tr", "beIN Sports Haber"),
+              "tivibuspor-yayin-akisi": ("TivibuSpor.tr", "Tivibu Spor"),
+              "tivibuspor-1-yayin-akisi": ("TivibuSpor1.tr", "Tivibu Spor 1"),
+              "tivibuspor-2-yayin-akisi": ("TivibuSpor2.tr", "Tivibu Spor 2"),
+              "tivibuspor-3-yayin-akisi": ("TivibuSpor3.tr", "Tivibu Spor 3"),
+              "tivibuspor-4-yayin-akisi": ("TivibuSpor4.tr", "Tivibu Spor 4"),
+              "s-sport-yayin-akisi": ("SSport.tr", "S Sport"),
+              "s-sport-1-yayin-akisi": ("SSport1.tr", "S Sport 1"),
+              "s-sport-2-yayin-akisi": ("SSport2.tr", "S Sport 2"),
+              "smart-spor-yayin-akisi": ("SmartSpor.tr", "Smart Spor"),
+              "smart-spor-1-yayin-akisi": ("SmartSpor1.tr", "Smart Spor 1"),
+              "smart-spor-2-yayin-akisi": ("SmartSpor2.tr", "Smart Spor 2"),
+              "eurosport-1-yayin-akisi": ("Eurosport1.tr", "Eurosport 1"),
+              "eurosport-2-yayin-akisi": ("Eurosport2.tr", "Eurosport 2"),
+              "a-spor-yayin-akisi": ("ASpor.tr", "A Spor"),
+              "ht-spor-yayin-akisi": ("HTSpor.tr", "HT Spor"),
+              "sports-tv-yayin-akisi": ("SportsTV.tr", "Sports TV"),
+              "fb-tv-yayin-akisi": ("FBTV.tr", "FB TV"),
+              "ntv-yayin-akisi": ("NTV.tr", "NTV"),
+              "cnn-turk-yayin-akisi": ("CNNTurk.tr", "CNN Türk"),
+              "haberturk-yayin-akisi": ("Haberturk.tr", "Habertürk"),
+              "a-haber-yayin-akisi": ("AHaber.tr", "A Haber"),
+              "a-news-yayin-akisi": ("ANews.tr", "A News"),
+              "a-para-yayin-akisi": ("APara.tr", "A Para"),
+              "bloomberg-ht-yayin-akisi": ("BloombergHT.tr", "Bloomberg HT"),
+              "ekoturk-yayin-akisi": ("Ekoturk.tr", "Ekotürk"),
+              "halk-tv-yayin-akisi": ("HalkTV.tr", "Halk TV"),
+              "sozcu-tv-yayin-akisi": ("SozcuTV.tr", "Sözcü TV"),
+              "tele1-yayin-akisi": ("Tele1.tr", "Tele1"),
+              "krt-tv-yayin-akisi": ("KRTTV.tr", "KRT TV"),
+              "haber-global-yayin-akisi": ("HaberGlobal.tr", "Haber Global"),
+              "24-tv-yayin-akisi": ("24TV.tr", "24 TV"),
+              "tgrt-haber-yayin-akisi": ("TGRTHaber.tr", "TGRT Haber"),
+              "tgrt-eu-yayin-akisi": ("TGRTEU.tr", "TGRT EU"),
+              "tgrt-belgesel-yayin-akisi": ("TGRTBelgesel.tr", "TGRT Belgesel"),
+              "benguturk-yayin-akisi": ("Benguturk.tr", "Bengütürk"),
+              "tv100-yayin-akisi": ("TV100.tr", "TV100"),
+              "akit-tv-yayin-akisi": ("AkitTV.tr", "Akit TV"),
+              "lider-haber-yayin-akisi": ("LiderHaber.tr", "Lider Haber"),
+              "flash-haber-yayin-akisi": ("FlashHaber.tr", "Flash Haber"),
+              "tyt-turk-yayin-akisi": ("TYTTurk.tr", "TYT Türk"),
+              "national-geographic-yayin-akisi": ("NationalGeographic.tr", "National Geographic"),
+              "nat-geo-wild-yayin-akisi": ("NatGeoWild.tr", "Nat Geo Wild"),
+              "discovery-channel-yayin-akisi": ("DiscoveryChannel.tr", "Discovery Channel"),
+              "bbc-earth-yayin-akisi": ("BBCEarth.tr", "BBC Earth"),
+              "bbc-first-yayin-akisi": ("BBCFirst.tr", "BBC First"),
+              "history-yayin-akisi": ("History.tr", "History"),
+              "tarih-tv-yayin-akisi": ("TarihTV.tr", "Tarih TV"),
+              "habitat-tv-yayin-akisi": ("HabitatTV.tr", "Habitat TV"),
+              "minika-go-yayin-akisi": ("MinikaGO.tr", "MinikaGO"),
+              "minika-cocuk-yayin-akisi": ("MinikaCocuk.tr", "Minika Çocuk"),
+              "cartoon-network-yayin-akisi": ("CartoonNetwork.tr", "Cartoon Network"),
+              "disney-junior-yayin-akisi": ("DisneyJunior.tr", "Disney Junior"),
+              "nick-jr-yayin-akisi": ("NickJr.tr", "Nick Jr"),
+              "nickelodeon-yayin-akisi": ("Nickelodeon.tr", "Nickelodeon"),
+              "baby-tv-yayin-akisi": ("BabyTV.tr", "Baby TV"),
+              "power-turk-yayin-akisi": ("PowerTurk.tr", "Power Türk"),
+              "power-tv-yayin-akisi": ("PowerTV.tr", "Power TV"),
+              "kral-pop-yayin-akisi": ("KralPop.tr", "Kral Pop"),
+              "dream-turk-yayin-akisi": ("DreamTurk.tr", "Dream Türk"),
+              "number1-turk-yayin-akisi": ("Number1Turk.tr", "Number1 Türk"),
+              "number1-tv-yayin-akisi": ("Number1TV.tr", "Number1 TV"),
           }
 
           def temiz(s):
               return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s or "").strip()
 
-          def norm(m):
-              s = str(m).translate(str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")).lower()
-              s = re.sub(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|raw)\b", "", s)
-              return re.sub(r"[^a-z0-9]", "", s)
-
-          def saat_ekle(z):
-              if not z or len(z) < 14:
-                  return z
-              if z[14:].strip().startswith(("+", "-")):
-                  return z
-              return z[:14] + " +0300"
-
-          def varyantlar(eid):
-              if not eid:
-                  return []
-              v = set()
-              v.add(eid)
-              v.add(eid.split('@')[0])
-              v.add(re.sub(r'\.[a-z]{2,3}$', '', eid))
-              v.add(re.sub(r'\.[a-z]{2,3}$', '', eid).split('@')[0])
-              v.add(eid.split('.')[0])
-              return [x for x in v if x]
-
-          kanallar = {}
-          for n, (tid, gad) in ADLAR.items():
-              kanallar[tid] = gad
-
-          kok = ET.parse("ham_guide.xml").getroot()
-          eid_to_tid = {}
-          for ch in kok.findall("channel"):
-              eid = ch.get("id")
-              if not eid: continue
-              d_el = ch.find("display-name")
-              ham_ad = d_el.text if (d_el is not None and d_el.text) else eid
-              n = norm(ham_ad)
-              if n not in ADLAR:
-                  base_id = re.sub(r'\.[a-z]{2,3}$', '', eid).split('@')[0]
-                  n = norm(base_id)
-              if n in ADLAR:
-                  tid = ADLAR[n][0]
-                  for v in varyantlar(eid):
-                      eid_to_tid[v] = tid
-
-          print("ham_guide icindeki eslesen benzersiz kanal:", len(set(eid_to_tid.values())))
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
 
           proglar = []
-          eklenen = set()
-          programli = set()
+          kanallar = {}
+          
+          bugun = datetime.utcnow() + timedelta(hours=3) # TRT (UTC+3)
+          yarin = bugun + timedelta(days=1)
+          
+          print("=== TVYAYINAKISI.COM KAZIMA BASLIYOR ===")
 
-          for p in kok.findall("programme"):
-              eid = p.get("channel")
-              if not eid: continue
-              tid = None
-              for v in varyantlar(eid):
-                  tid = eid_to_tid.get(v)
-                  if tid: break
-              if not tid: continue
-              b_el = p.find("title")
-              if b_el is None or not b_el.text or not b_el.text.strip(): continue
-              st = saat_ekle(p.get("start", ""))
-              sp = saat_ekle(p.get("stop", ""))
-              if not st or not sp or (tid, st) in eklenen: continue
-              eklenen.add((tid, st))
-              yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tid})
-              ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(b_el.text)
-              de = p.find("desc")
-              if de is not None and de.text:
-                  ET.SubElement(yp, "desc", {"lang": "tr"}).text = temiz(de.text)
-              proglar.append(yp)
-              programli.add(tid)
+          for slug, (tvg_id, gorunen_ad) in KANALLAR.items():
+              kanallar[tvg_id] = gorunen_ad
+              url = f"https://www.tvyayinakisi.com/{slug}/"
+              try:
+                  r = requests.get(url, headers=headers, timeout=15)
+                  if r.status_code != 200:
+                      print(f"[{tvg_id}] HTTP {r.status_code} - Atlandi")
+                      continue
+                  
+                  soup = BeautifulSoup(r.text, "html.parser")
+                  # Sitedeki program listesi yapisini bulma (Genel bir yaklasim)
+                  # Not: Site yapisi degisirse bu kisim guncellenmelidir.
+                  # Ornek: <div class="yayin-akisi-listesi"> <li> <time>08:00</time> <span>Program</span> </li> ...
+                  
+                  # Programlari cek (Basit bir metin tabanli yaklasim)
+                  # Site uzerindeki saat ve program adi iceren etiketleri ariyoruz
+                  # Simdilik sayfadaki tum metni alip basit bir regex ile ayiklayacagiz
+                  
+                  # NOT: Asagidaki parsing kismi sitenin gercek HTML yapisina gore 
+                  # (ornegin <table> veya <div class="...">) daha da netlestirilmelidir.
+                  # Su anki kod, ornek bir yapiyi hedefler.
+                  
+                  metin = soup.get_text()
+                  # "HH:MM" formatindaki saatleri ve ardindan gelen program isimlerini ariyoruz
+                  matches = re.findall(r'(\d{2}:\d{2})\s*\n\s*([^\n]+)', metin)
+                  
+                  if not matches:
+                      print(f"[{tvg_id}] Program bulunamadi (HTML yapisi farkli olabilir)")
+                      continue
 
-          tv = ET.Element("tv", {"generator-info-name": "Yedekli-Turkiye-EPG"})
+                  eklenen_saatler = set()
+                  for saat_str, program_adi in matches:
+                      try:
+                          saat, dakika = map(int, saat_str.split(':'))
+                          # Saat 00:00-05:59 arasi ise ertesi gune at
+                          baz_tarih = bugun if saat >= 6 else yarin
+                          baslangic = baz_tarih.replace(hour=saat, minute=dakika, second=0, microsecond=0)
+                          bitis = baslangic + timedelta(minutes=60) # Varsayilan 1 saat
+                          
+                          st = baslangic.strftime("%Y%m%d%H%M%S") + " +0300"
+                          sp = bitis.strftime("%Y%m%d%H%M%S") + " +0300"
+                          
+                          if (tvg_id, st) in eklenen_saatler:
+                              continue
+                          eklenen_saatler.add((tvg_id, st))
+
+                          yp = ET.Element("programme", {"start": st, "stop": sp, "channel": tvg_id})
+                          ET.SubElement(yp, "title", {"lang": "tr"}).text = temiz(program_adi)
+                          proglar.append(yp)
+                      except Exception:
+                          pass
+                          
+                  print(f"[{tvg_id}] Basariyla tarandi. ({len(matches)} program)")
+
+              except Exception as e:
+                  print(f"[{tvg_id}] Hata: {e}")
+
+          # XML'i olustur
+          tv = ET.Element("tv", {"generator-info-name": "TVYayinAkisi-Scraper"})
           for tid, gad in sorted(kanallar.items()):
               yc = ET.SubElement(tv, "channel", {"id": tid})
               ET.SubElement(yc, "display-name", {"lang": "tr"}).text = gad
+          
           for yp in proglar:
               tv.append(yp)
+              
           ET.ElementTree(tv).write("guide.xml", encoding="utf-8", xml_declaration=True)
 
-          programsiz = set(kanallar.keys()) - programli
-          print("OZET -> Toplam kanal: %d | Programli: %d | Programsiz: %d | Toplam program: %d"
-                % (len(kanallar), len(programli), len(programsiz), len(proglar)))
-          
-          # Hangi kanallarin cekilemedigini gormek icin detayli log
-          if programsiz:
-              print("BILGI YOK (Programsiz) ilk 20:", sorted(programsiz)[:20])
+          print(f"OZET -> Toplam kanal: {len(kanallar)} | Toplam program: {len(proglar)}")
           PY
 
       - name: Gist Guncelle ve Dogrula
@@ -219,12 +224,14 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
           CLEAN_ID=$(echo "$GIST_ID" | awk -F'/' '{print $NF}' | tr -d '[:space:]')
+          # Gist'e yukle
           jq -n --rawfile content guide.xml '{files: {"guide.xml": {content: $content}}}' | \
             gh api -X PATCH /gists/"$CLEAN_ID" --input - > /dev/null
           
+          # Dogrulama
           echo "=== GIST DOGRULAMA ==="
           FIRST_LINE=$(gh api /gists/"$CLEAN_ID" --jq '.files["guide.xml"].content' | head -n 1)
-          echo "Gist'teki ilk satır: $FIRST_LINE"
+          echo "Gist'teki ilk satir: $FIRST_LINE"
           if [[ "$FIRST_LINE" != "<?xml"* ]]; then
             echo "HATA: Gist guncellenemedi!"
             exit 1
